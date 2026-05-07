@@ -1,98 +1,231 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Wind, RefreshCcw } from 'lucide-react';
+import { Wind, RefreshCcw, CheckCircle2, Circle } from 'lucide-react';
 import StatusCircle from '../components/kiosk/StatusCircle';
 import ProgressIndicator from '../components/kiosk/ProgressIndicator';
+import { useWebSocket } from '../context/WebSocketContext';
 
-const AlcoholTest = ({ onComplete }) => {
-  const [status, setStatus] = useState('waiting'); // waiting, detecting, success, retry
-  const [progress, setProgress] = useState(0);
+const AlcoholTest = ({ onComplete, isDevMode, setDevControls }) => {
+  const [status, setStatus] = useState('preparing'); // preparing, ready, detected, error, sampling, analyzing
+  const [progress, setProgress] = useState(0); // Progress is just for animation now
+  
+  const { sendCommand, subscribe } = useWebSocket();
 
+  const instructions = [
+    {
+      title: "หยิบหลอดใหม่",
+      description: "รับหลอดใหม่จากกล่องด้านข้าง",
+    },
+    {
+      title: "เสียบหลอดที่ช่องเป่า",
+      description: "ใส่หลอดลงในช่องเป่าให้แน่น",
+    },
+    {
+      title: "เป่าลมค้างไว้ประมาณ 3 วินาที",
+      description: "เริ่มเป่าเมื่อสัญญาณพร้อมและเป่าต่อเนื่อง",
+    },
+  ];
+
+  // Send START command on mount
+  useEffect(() => {
+    if (!isDevMode) {
+      sendCommand('START_TEST');
+    }
+  }, [isDevMode, sendCommand]);
+
+  // Handle incoming WebSocket messages via Pub/Sub
+  useEffect(() => {
+    if (!isDevMode) {
+      const unsubState = subscribe('alcohol_state', (data) => {
+        const stateMapping = {
+          'warming_up': 'preparing',
+          'ready': 'ready',
+          'breath_detected': 'detected',
+          'sampling': 'detected',
+          'analyzing': 'detected',
+          'error': 'error',
+          'flow_error': 'error',
+          'timeout': 'error'
+        };
+        const mappedState = stateMapping[data.state] || data.state;
+        setStatus(mappedState);
+      });
+
+      const unsubResult = subscribe('alcohol_result', (data) => {
+        if (data.success) {
+          onComplete(data.value);
+        } else {
+          setStatus('error');
+        }
+      });
+      
+      return () => {
+        unsubState();
+        unsubResult();
+      };
+    }
+  }, [isDevMode, onComplete, subscribe]);
+
+  // Dev Mode Mock Progress & State
+  useEffect(() => {
+    if (isDevMode && status === 'preparing') {
+      const timer = setTimeout(() => setStatus('ready'), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [status, isDevMode]);
+
+  // Fake progress animation for visual feedback during 'detected' state
   useEffect(() => {
     let interval;
-    if (status === 'detecting') {
+    if (status === 'detected') {
       interval = setInterval(() => {
         setProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            setTimeout(() => setStatus('success'), 500);
-            return 100;
-          }
+          if (prev >= 90) return prev; // Stop at 90% and wait for real result in prod
           return prev + 2;
         });
-      }, 50);
+      }, 100);
+    } else if (status === 'error' || status === 'preparing' || status === 'ready') {
+      setProgress(0);
     }
     return () => clearInterval(interval);
   }, [status]);
 
-  useEffect(() => {
-    if (status === 'success') {
-      const timer = setTimeout(() => {
-        onComplete(Math.random() * 50); // Simulate random alcohol value
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [status, onComplete]);
-
-  const startTest = () => {
-    setStatus('detecting');
-    setProgress(0);
+  const startDevTest = () => {
+    setStatus('detected');
+    // Mock the backend completing the test
+    setTimeout(() => {
+      onComplete(Math.random() * 5); // Pass random small value
+    }, 4000);
   };
 
-  const getStatusText = () => {
+  useEffect(() => {
+    if (isDevMode && setDevControls) {
+      if (status === 'ready') {
+        setDevControls(
+          <button
+            onClick={startDevTest}
+            className="flex items-center px-3 py-1.5 bg-primary/20 text-primary-200 hover:bg-primary/40 hover:text-white rounded-md text-sm font-bold transition-colors"
+          >
+            <Wind size={16} className="mr-2" />
+            Simulate Blow
+          </button>
+        );
+      } else {
+        setDevControls(null);
+      }
+    }
+    return () => {
+      if (setDevControls) setDevControls(null);
+    };
+  }, [isDevMode, status, setDevControls]);
+
+  const getStatusDisplay = () => {
     switch (status) {
-      case 'waiting': return 'กรุณาเริ่มเป่า';
-      case 'detecting': return 'กำลังตรวจสอบ...';
-      case 'success': return 'ตรวจสอบสำเร็จ';
-      case 'retry': return 'กรุณาเป่าใหม่';
-      default: return '';
+      case 'preparing': return { text: 'กำลังเตรียมอุปกรณ์...', color: 'text-amber-500' };
+      case 'ready': return { text: 'อุปกรณ์พร้อมแล้ว', color: 'text-success' };
+      case 'detected': return { text: 'กำลังตรวจวัด...', color: 'text-primary' };
+      case 'error': return { text: 'เกิดข้อผิดพลาด', color: 'text-destructive' };
+      default: return { text: '', color: '' };
+    }
+  };
+
+  const statusDisplay = getStatusDisplay();
+
+  const handleRetry = () => {
+    setStatus('preparing');
+    if (!isDevMode) {
+      sendCommand('START_TEST');
     }
   };
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="flex flex-col items-center justify-center space-y-12 w-full"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center"
     >
-      <div className="text-center space-y-4">
-        <h2 className="text-5xl font-bold text-slate-800">กรุณาเป่าแอลกอฮอล์</h2>
-        <p className="text-2xl text-slate-500">{getStatusText()}</p>
-      </div>
+      {/* Left Column: Instructions */}
+      <div className="space-y-8">
+        <div className="space-y-2">
+          <h2 className="text-4xl font-black text-slate-800">คำแนะนำการใช้งาน</h2>
+          <p className="text-xl text-slate-500 font-medium">กรุณาปฏิบัติตามขั้นตอนด้านล่าง</p>
+        </div>
 
-      <StatusCircle status={status} progress={progress} icon={Wind} />
-
-      <div className="w-full max-w-xl space-y-6">
-        <ProgressIndicator progress={progress} />
-        
-        <div className="flex justify-center">
-          {status === 'waiting' && (
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={startTest}
-              className="kiosk-button h-20 px-12 bg-primary text-white text-2xl shadow-lg"
+        <div className="space-y-6">
+          {instructions.map((step, index) => (
+            <motion.div
+              key={index}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.2 }}
+              className="flex items-start space-x-6 p-6 bg-white rounded-3xl shadow-sm border border-slate-100"
             >
-              เริ่มเป่า
-            </motion.button>
-          )}
-          
-          {status === 'retry' && (
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={startTest}
-              className="kiosk-button h-20 px-12 bg-destructive text-white text-2xl shadow-lg"
-            >
-              <RefreshCcw className="mr-3" />
-              ลองใหม่
-            </motion.button>
-          )}
+              <div className="flex-shrink-0 w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center text-2xl font-black">
+                {index + 1}
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-2xl font-bold text-slate-800">{step.title}</h3>
+                <p className="text-lg text-slate-500 leading-relaxed font-medium">{step.description}</p>
+              </div>
+            </motion.div>
+          ))}
         </div>
       </div>
 
-      <p className="text-xl text-slate-400 font-medium">
-        กรุณาเป่าต่อเนื่องจนกว่าจะเสร็จสิ้น
-      </p>
+      {/* Right Column: Blow Status */}
+      <div className="kiosk-card p-12 flex flex-col items-center space-y-10 bg-slate-50/50 border-2 border-white">
+        <div className="text-center space-y-2">
+          <h2 className={`text-4xl font-black ${statusDisplay.color}`}>
+            {statusDisplay.text}
+          </h2>
+          <p className="text-xl text-slate-400 font-medium uppercase tracking-widest">
+            Blow Status
+          </p>
+        </div>
+
+        <StatusCircle 
+          status={status === 'detected' ? 'detecting' : status === 'ready' ? 'waiting' : status} 
+          progress={progress} 
+          icon={Wind} 
+        />
+
+        <div className="w-full space-y-8">
+          <div className="space-y-3">
+            <div className="flex justify-between items-end">
+              <span className="text-lg font-bold text-slate-500">ความคืบหน้า</span>
+              <span className="text-2xl font-black text-primary">{progress}%</span>
+            </div>
+            <ProgressIndicator progress={progress} />
+          </div>
+          
+          <div className="flex justify-center h-24">
+            {status === 'ready' && (
+              <div className="flex items-center text-slate-400 text-2xl font-bold italic animate-pulse">
+                กรุณาเป่าลมอย่างต่อเนื่อง...
+              </div>
+            )}
+            
+            {status === 'error' && (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleRetry}
+                className="kiosk-button w-full bg-destructive text-white text-3xl shadow-lg shadow-destructive/20"
+              >
+                <RefreshCcw className="mr-3" />
+                ลองใหม่
+              </motion.button>
+            )}
+
+            {status === 'preparing' && (
+              <div className="flex items-center text-slate-400 text-2xl font-bold italic animate-pulse">
+                โปรดรอสักครู่...
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </motion.div>
   );
 };
