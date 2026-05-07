@@ -1,0 +1,54 @@
+#*************************************************************
+#*
+#* Makefile for finger_scan and match_template
+#* Device: Hamster Pro 20 (U20-A, U20-AP) - FDU05
+#*
+#*************************************************************
+
+PORT = pi
+CFLAGS = -Wall -O
+CPP = g++
+INCPATH = -I./ -I../include
+LIBS = -L../lib/$(PORT)
+
+# SecuGen SDK libraries for Hamster Pro 20 (FDU05)
+# Note: SDK uses legacy libusb-0.1 API, install with: sudo apt install libusb-dev
+SGLIBS = -lsgfplib -lsgnfiq -lsgimage -lsgfpamx -lsgfdu05 -lusb -lpthread
+
+# Output directory
+BINDIR = ../bin/$(PORT)
+
+# Targets
+FINGER_SCAN = $(BINDIR)/finger_scan
+MATCH_TEMPLATE = $(BINDIR)/match_template
+
+#*************************************************************
+# Build all targets
+#*************************************************************
+all: $(FINGER_SCAN) $(MATCH_TEMPLATE)
+
+$(FINGER_SCAN): finger_scan.o
+	@mkdir -p $(BINDIR)
+	$(CPP) -o $@ finger_scan.o $(LIBS) $(SGLIBS)
+
+$(MATCH_TEMPLATE): match_template.o
+	@mkdir -p $(BINDIR)
+	$(CPP) -o $@ match_template.o $(LIBS) $(SGLIBS)
+
+#*************************************************************
+# Compilation rules
+#*************************************************************
+finger_scan.o: finger_scan.cpp
+	$(CPP) $(CFLAGS) $(INCPATH) -c finger_scan.cpp -o $@
+
+match_template.o: match_template.cpp
+	$(CPP) $(CFLAGS) $(INCPATH) -c match_template.cpp -o $@
+
+#*************************************************************
+# Clean
+#*************************************************************
+clean:
+	rm -f *.o $(FINGER_SCAN) $(MATCH_TEMPLATE)
+	rm -f *.raw *.min core
+
+.PHONY: all clean
