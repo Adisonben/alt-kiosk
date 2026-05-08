@@ -13,8 +13,8 @@ import base64
 _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _BACKEND_DIR = os.path.dirname(_APP_DIR)
 
-BIN_PATH = os.path.join(_BACKEND_DIR, "scripts", "finger_scan")
-MATCH_BIN_PATH = os.path.join(_BACKEND_DIR, "scripts", "match_template")
+BIN_PATH = os.path.join(_BACKEND_DIR, "bin", "finger_scan")
+MATCH_BIN_PATH = os.path.join(_BACKEND_DIR, "bin", "match_template")
 
 SCAN_CMD = ["sudo", BIN_PATH, "5000"] # 5000ms timeout
 MATCH_CMD_BASE = ["sudo", MATCH_BIN_PATH]
