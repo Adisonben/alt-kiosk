@@ -135,7 +135,7 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
                 if (onCancel) onCancel();
               }, 3000);
             } else {
-              setScanError(`ลายนิ้วมือไม่ตรงกัน (สแกนผิดพลาด ${next}/3 ครั้ง)`);
+              setScanError(`ลายนิ้วมือไม่ตรงกัน (${next}/3 ครั้ง)`);
             }
             return next;
           });
@@ -272,7 +272,7 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
                 </p>
                 {scanError && scanRetries < 3 && (
                   <div className="pt-4">
-                    <button 
+                    <button
                       onClick={handleRetryScan}
                       className="px-8 py-3 bg-destructive/10 text-destructive hover:bg-destructive hover:text-white rounded-full font-bold text-xl transition-colors"
                     >
