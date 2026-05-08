@@ -15,6 +15,7 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
   const [userData, setUserData] = useState(null);
   const [scanError, setScanError] = useState(null);
   const [scanStatusMsg, setScanStatusMsg] = useState('กำลังรอรับข้อมูลลายนิ้วมือ...');
+  const [scanSuccess, setScanSuccess] = useState(false);
 
   const { sendCommand, subscribe } = useWebSocket();
 
@@ -22,17 +23,20 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
     if (employeeId.length < 8) {
       setEmployeeId(prev => prev + num);
       setScanError(null);
+      setScanSuccess(false);
     }
   };
 
   const handleDelete = () => {
     setEmployeeId(prev => prev.slice(0, -1));
     setScanError(null);
+    setScanSuccess(false);
   };
 
   const handleIdentify = async () => {
     setPhase('loading');
     setScanError(null);
+    setScanSuccess(false);
     try {
       if (isDevMode) {
         // Mock API query for Dev Mode
@@ -73,12 +77,17 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
 
   const handleVerify = () => {
     // Dev overlay manual trigger
-    onConfirm(employeeId);
+    setScanSuccess(true);
+    setScanStatusMsg('ตรวจสอบลายนิ้วมือสำเร็จ! (จำลอง)');
+    setTimeout(() => {
+      onConfirm(employeeId);
+    }, 1500);
   };
 
   const handleBack = () => {
     setPhase('identifying');
     setScanError(null);
+    setScanSuccess(false);
   };
 
   // Phase 2: Send WS command when entering verifying phase
@@ -100,7 +109,11 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
 
       const unsubResult = subscribe('fingerprint_result', (data) => {
         if (data.success && data.match) {
-          onConfirm(employeeId);
+          setScanSuccess(true);
+          setScanStatusMsg('ตรวจสอบลายนิ้วมือสำเร็จ!');
+          setTimeout(() => {
+            onConfirm(employeeId);
+          }, 1500);
         } else {
           setScanError('ลายนิ้วมือไม่ตรงกัน หรือสแกนไม่สำเร็จ');
         }
@@ -216,18 +229,22 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
                 <motion.div
                   animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.6, 0.3] }}
                   transition={{ duration: 2, repeat: Infinity }}
-                  className={`absolute -inset-8 rounded-full blur-xl ${scanError ? 'bg-destructive/20' : 'bg-primary/20'}`}
+                  className={`absolute -inset-8 rounded-full blur-xl ${scanError ? 'bg-destructive/20' : scanSuccess ? 'bg-success/20' : 'bg-primary/20'}`}
                 />
                 <div className="relative bg-white p-10 rounded-[3rem] shadow-xl border-4 border-slate-50">
-                  <Fingerprint size={120} className={scanError ? 'text-destructive' : 'text-primary'} />
+                  {scanSuccess ? (
+                    <Check size={120} className="text-success" />
+                  ) : (
+                    <Fingerprint size={120} className={scanError ? 'text-destructive' : 'text-primary'} />
+                  )}
                 </div>
               </div>
 
               <div className="text-center space-y-3">
-                <h4 className={`text-3xl font-bold ${scanError ? 'text-destructive' : 'text-slate-800'}`}>
-                  {scanError ? scanError : 'กรุณาวางนิ้วบนเครื่องสแกน'}
+                <h4 className={`text-3xl font-bold ${scanError ? 'text-destructive' : scanSuccess ? 'text-success' : 'text-slate-800'}`}>
+                  {scanError ? scanError : scanSuccess ? 'ยืนยันตัวตนสำเร็จ' : 'กรุณาวางนิ้วบนเครื่องสแกน'}
                 </h4>
-                <p className={`text-xl ${scanError ? 'text-destructive/80' : 'text-slate-400 animate-pulse'}`}>
+                <p className={`text-xl ${scanError ? 'text-destructive/80' : scanSuccess ? 'text-success/80' : 'text-slate-400 animate-pulse'}`}>
                   {scanError ? 'ลายนิ้วมือไม่ตรงกัน หรือสแกนไม่สำเร็จ' : scanStatusMsg}
                 </p>
               </div>
