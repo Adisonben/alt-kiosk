@@ -46,7 +46,8 @@ def main():
     # Step 1: Scan first finger
     print("Please place your FIRST finger on the scanner...")
     raw_1 = scan_finger("First Finger")
-    print(raw_1)
+    template1_base64 = base64.b64encode(raw_1).decode("utf-8")
+    print(template1_base64)
     if not raw_1:
         print("Failed to capture first template. Exiting.")
         sys.exit(1)
@@ -54,7 +55,8 @@ def main():
     # Step 2: Scan second finger
     print("\nPlease place your SECOND finger on the scanner...")
     raw_2 = scan_finger("Second Finger")
-    print(raw_2)
+    template2_base64 = base64.b64encode(raw_2).decode("utf-8")
+    print(template2_base64)
     if not raw_2:
         print("Failed to capture second template. Exiting.")
         sys.exit(1)
