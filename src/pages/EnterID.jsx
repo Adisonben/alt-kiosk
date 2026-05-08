@@ -5,13 +5,17 @@ import NumericKeypad from '../components/kiosk/NumericKeypad';
 import { fetchEmployeeData } from '../services/api';
 import { useWebSocket } from '../context/WebSocketContext';
 
+// Test Fingerprint Data
+const finger1_template = "IzXhJ205qqb7m0Z0CstIsd9bWZ/Ns+5NLDejMa+IAKwCbn+AwCHbqT5Xk0RJdqsbCKN1QlbPpkkdh0vUS5JQd7gaXvxmI8ZB5q1xMY47LiisilMLswj3gtYo4SoN4SHM8Br7Vo2u3M1FPQAGNIy23HSPfrt6h341/0dP/9d5ok0bLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fA==";
+const finger2_template = "f+o/bulopwVzRiIZtxlRt/whg1M4mWFl/Im4w4d4mM72pf36PsAxm4gkYXf3Quc0iOVG+6I6ifSKjmL3Acsd1unm6WPRIRSsHHCltcN0vkINNf272lILqUHScL2cOnV+IatvJeSSCBq4e3WyyAtbamrFrfeGX3XtpSR4+IuYNOwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fA==";
+
 const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
   const [phase, setPhase] = useState('identifying'); // identifying, loading, verifying
   const [employeeId, setEmployeeId] = useState('');
   const [userData, setUserData] = useState(null);
   const [scanError, setScanError] = useState(null);
   const [scanStatusMsg, setScanStatusMsg] = useState('กำลังรอรับข้อมูลลายนิ้วมือ...');
-  
+
   const { sendCommand, subscribe } = useWebSocket();
 
   const handleKeyPress = (num) => {
@@ -37,19 +41,25 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
             name: 'สมชาย รักดี',
             department: 'ฝ่ายผลิต (Production)',
             id: employeeId,
-            finger_data: ['mock_finger_data_123', 'mock_finger_data_456'] // Mock array
+            finger_data: [finger1_template, finger2_template] // Mock array
           });
           setPhase('verifying');
           setScanStatusMsg('กำลังรอรับข้อมูลลายนิ้วมือ...');
         }, 1000);
       } else {
         // Actual REST API Call
-        const data = await fetchEmployeeData(employeeId);
+        // const data = await fetchEmployeeData(employeeId);
+        // setUserData({
+        //   name: data.name || 'ไม่ทราบชื่อ',
+        //   department: data.department || '-',
+        //   id: employeeId,
+        //   finger_data: data.fingerprint_template || []
+        // });
         setUserData({
-          name: data.name || 'ไม่ทราบชื่อ',
-          department: data.department || '-',
+          name: 'สมชาย รักดี',
+          department: 'ฝ่ายผลิต (Production)',
           id: employeeId,
-          finger_data: data.fingerprint_template || []
+          finger_data: [finger1_template, finger2_template] // Mock array
         });
         setPhase('verifying');
         setScanStatusMsg('กำลังรอรับข้อมูลลายนิ้วมือ...');
@@ -95,7 +105,7 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
           setScanError('ลายนิ้วมือไม่ตรงกัน หรือสแกนไม่สำเร็จ');
         }
       });
-      
+
       return () => {
         unsubState();
         unsubResult();
@@ -160,9 +170,9 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
                   <p className="text-2xl font-bold text-slate-400">กำลังตรวจสอบข้อมูล...</p>
                 </div>
               ) : (
-                <NumericKeypad 
-                  onKeyPress={handleKeyPress} 
-                  onDelete={handleDelete} 
+                <NumericKeypad
+                  onKeyPress={handleKeyPress}
+                  onDelete={handleDelete}
                   onConfirm={handleIdentify}
                   disabledConfirm={!employeeId}
                 />
@@ -178,7 +188,7 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
             className="w-full max-w-2xl kiosk-card p-12 flex flex-col items-center space-y-8"
           >
             <div className="w-full flex justify-between items-center border-b border-slate-100 pb-6">
-              <button 
+              <button
                 onClick={handleBack}
                 className="flex items-center text-slate-400 font-bold text-xl hover:text-primary transition-colors"
               >
@@ -203,7 +213,7 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
 
             <div className="flex flex-col items-center space-y-8 py-4">
               <div className="relative">
-                <motion.div 
+                <motion.div
                   animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.6, 0.3] }}
                   transition={{ duration: 2, repeat: Infinity }}
                   className={`absolute -inset-8 rounded-full blur-xl ${scanError ? 'bg-destructive/20' : 'bg-primary/20'}`}
@@ -212,7 +222,7 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
                   <Fingerprint size={120} className={scanError ? 'text-destructive' : 'text-primary'} />
                 </div>
               </div>
-              
+
               <div className="text-center space-y-3">
                 <h4 className={`text-3xl font-bold ${scanError ? 'text-destructive' : 'text-slate-800'}`}>
                   {scanError ? scanError : 'กรุณาวางนิ้วบนเครื่องสแกน'}
