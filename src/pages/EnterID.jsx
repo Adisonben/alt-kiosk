@@ -130,7 +130,7 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
           setScanRetries(prev => {
             const next = prev + 1;
             if (next >= 3) {
-              setScanError('สแกนไม่สำเร็จครบ 3 ครั้ง ระบบกำลังกลับสู่หน้าหลัก...');
+              setScanError('สแกนไม่สำเร็จ ระบบกำลังกลับสู่หน้าหลัก...');
               setTimeout(() => {
                 if (onCancel) onCancel();
               }, 3000);
