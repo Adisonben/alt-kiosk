@@ -56,7 +56,7 @@ function App() {
         )}
         
         {currentStep === 'id_entry' && (
-          <EnterID onConfirm={handleConfirmID} isDevMode={isDevMode} setDevControls={setDevControls} />
+          <EnterID onConfirm={handleConfirmID} onCancel={handleReset} isDevMode={isDevMode} setDevControls={setDevControls} />
         )}
         
         {currentStep === 'testing' && (

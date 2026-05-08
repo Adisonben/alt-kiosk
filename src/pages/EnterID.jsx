@@ -9,13 +9,14 @@ import { useWebSocket } from '../context/WebSocketContext';
 const finger1_template = "IzXhJ205qqb7m0Z0CstIsd9bWZ/Ns+5NLDejMa+IAKwCbn+AwCHbqT5Xk0RJdqsbCKN1QlbPpkkdh0vUS5JQd7gaXvxmI8ZB5q1xMY47LiisilMLswj3gtYo4SoN4SHM8Br7Vo2u3M1FPQAGNIy23HSPfrt6h341/0dP/9d5ok0bLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fA==";
 const finger2_template = "f+o/bulopwVzRiIZtxlRt/whg1M4mWFl/Im4w4d4mM72pf36PsAxm4gkYXf3Quc0iOVG+6I6ifSKjmL3Acsd1unm6WPRIRSsHHCltcN0vkINNf272lILqUHScL2cOnV+IatvJeSSCBq4e3WyyAtbamrFrfeGX3XtpSR4+IuYNOwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fA==";
 
-const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
+const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
   const [phase, setPhase] = useState('identifying'); // identifying, loading, verifying
   const [employeeId, setEmployeeId] = useState('');
   const [userData, setUserData] = useState(null);
   const [scanError, setScanError] = useState(null);
   const [scanStatusMsg, setScanStatusMsg] = useState('กำลังรอรับข้อมูลลายนิ้วมือ...');
   const [scanSuccess, setScanSuccess] = useState(false);
+  const [scanRetries, setScanRetries] = useState(0);
 
   const { sendCommand, subscribe } = useWebSocket();
 
@@ -37,6 +38,7 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
     setPhase('loading');
     setScanError(null);
     setScanSuccess(false);
+    setScanRetries(0);
     try {
       if (isDevMode) {
         // Mock API query for Dev Mode
@@ -88,6 +90,16 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
     setPhase('identifying');
     setScanError(null);
     setScanSuccess(false);
+    setScanRetries(0);
+  };
+
+  const handleRetryScan = () => {
+    setScanError(null);
+    setScanStatusMsg('กำลังรอรับข้อมูลลายนิ้วมือ...');
+    if (!isDevMode && userData) {
+      const templates = Array.isArray(userData.finger_data) ? userData.finger_data : [userData.finger_data].filter(Boolean);
+      sendCommand('VERIFY_FINGERPRINT', { target_templates: templates });
+    }
   };
 
   // Phase 2: Send WS command when entering verifying phase
@@ -115,7 +127,18 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
             onConfirm(employeeId);
           }, 1500);
         } else {
-          setScanError('ลายนิ้วมือไม่ตรงกัน หรือสแกนไม่สำเร็จ');
+          setScanRetries(prev => {
+            const next = prev + 1;
+            if (next >= 3) {
+              setScanError('สแกนไม่สำเร็จครบ 3 ครั้ง ระบบกำลังกลับสู่หน้าหลัก...');
+              setTimeout(() => {
+                if (onCancel) onCancel();
+              }, 3000);
+            } else {
+              setScanError(`ลายนิ้วมือไม่ตรงกัน (สแกนผิดพลาด ${next}/3 ครั้ง)`);
+            }
+            return next;
+          });
         }
       });
 
@@ -245,8 +268,18 @@ const EnterID = ({ onConfirm, isDevMode, setDevControls }) => {
                   {scanError ? scanError : scanSuccess ? 'ยืนยันตัวตนสำเร็จ' : 'กรุณาวางนิ้วบนเครื่องสแกน'}
                 </h4>
                 <p className={`text-xl ${scanError ? 'text-destructive/80' : scanSuccess ? 'text-success/80' : 'text-slate-400 animate-pulse'}`}>
-                  {scanError ? 'ลายนิ้วมือไม่ตรงกัน หรือสแกนไม่สำเร็จ' : scanStatusMsg}
+                  {scanError ? (scanRetries >= 3 ? 'กรุณาติดต่อผู้ดูแลระบบ' : 'กดปุ่มเพื่อลองสแกนใหม่อีกครั้ง') : scanStatusMsg}
                 </p>
+                {scanError && scanRetries < 3 && (
+                  <div className="pt-4">
+                    <button 
+                      onClick={handleRetryScan}
+                      className="px-8 py-3 bg-destructive/10 text-destructive hover:bg-destructive hover:text-white rounded-full font-bold text-xl transition-colors"
+                    >
+                      ลองสแกนใหม่
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
