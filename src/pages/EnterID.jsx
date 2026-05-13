@@ -45,7 +45,6 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
         setTimeout(() => {
           setUserData({
             name: 'สมชาย รักดี',
-            department: 'ฝ่ายผลิต (Production)',
             id: employeeId,
             finger_data: [finger1_template, finger2_template] // Mock array
           });
@@ -59,11 +58,15 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
         // Extract data assuming the API might return it wrapped in a data property
         const data = responseData.data || responseData;
 
+        // Map fingerprints array to extract the fingerprint_code strings
+        const fingerprintCodes = Array.isArray(data.fingerprints)
+          ? data.fingerprints.map(fp => fp.fingerprint_code).filter(Boolean)
+          : [];
+
         setUserData({
-          name: data.name || 'ไม่ทราบชื่อ',
-          department: data.department || '-',
-          id: employeeId,
-          finger_data: data.fingerprint_template || data.finger_data || []
+          name: data.full_name || data.name || 'ไม่ทราบชื่อ',
+          id: data.emp_id || employeeId,
+          finger_data: fingerprintCodes.length > 0 ? fingerprintCodes : (data.fingerprint_template || data.finger_data || [])
         });
         setPhase('verifying');
         setScanStatusMsg('กำลังรอรับข้อมูลลายนิ้วมือ...');
@@ -240,8 +243,7 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
               </div>
               <div className="flex-1 space-y-1">
                 <h3 className="text-3xl font-black text-slate-800">{userData?.name}</h3>
-                <p className="text-xl text-slate-500 font-medium">{userData?.department}</p>
-                <p className="text-lg text-primary font-mono font-bold">ID: {userData?.id}</p>
+                <p className="text-xl text-primary font-mono font-bold">รหัสพนักงาน: {userData?.id}</p>
               </div>
             </div>
 
