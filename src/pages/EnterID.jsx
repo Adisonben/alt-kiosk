@@ -54,18 +54,16 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
         }, 1000);
       } else {
         // Actual REST API Call
-        // const data = await fetchEmployeeData(employeeId);
-        // setUserData({
-        //   name: data.name || 'ไม่ทราบชื่อ',
-        //   department: data.department || '-',
-        //   id: employeeId,
-        //   finger_data: data.fingerprint_template || []
-        // });
+        const responseData = await fetchEmployeeData(employeeId);
+
+        // Extract data assuming the API might return it wrapped in a data property
+        const data = responseData.data || responseData;
+
         setUserData({
-          name: 'สมชาย รักดี',
-          department: 'ฝ่ายผลิต (Production)',
+          name: data.name || 'ไม่ทราบชื่อ',
+          department: data.department || '-',
           id: employeeId,
-          finger_data: [finger1_template, finger2_template] // Mock array
+          finger_data: data.fingerprint_template || data.finger_data || []
         });
         setPhase('verifying');
         setScanStatusMsg('กำลังรอรับข้อมูลลายนิ้วมือ...');
