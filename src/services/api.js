@@ -12,7 +12,13 @@ export const fetchEmployeeData = async (employeeId) => {
   try {
     const device_data = await fetchDeviceData();
     const orgId = device_data.org_id;
-    const response = await axios.get(`${API_URL}/device/employee/${orgId}/${employeeId}`);
+    const token = device_data.token;
+    
+    const response = await axios.get(`${API_URL}/device/employee/${orgId}/${employeeId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
     return response.data;
   } catch (error) {
     console.error('Error fetching employee:', error);

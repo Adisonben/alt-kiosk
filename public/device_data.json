@@ -2,5 +2,6 @@
   "id": "kiosk-001",
   "name": "Kiosk01",
   "serial_num": "SN-123456789",
-  "org_id": "73a8f7ad-32a1-4c9e-b43c-024d3351f8b3"
+  "org_id": "73a8f7ad-32a1-4c9e-b43c-024d3351f8b3",
+  "token": "1|OPL1SItde4PYs2tTAqrfsJRCTrR57iJMxoshbfZ5f2abb40e"
 }
