@@ -25,6 +25,7 @@ from typing import Optional
 from app.services.employee_service import EmployeeService
 from app.services.fingerprint_service import FingerprintService
 from app.services.scan_log_service import ScanLogService
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +121,13 @@ class IdentifyService:
 
         logger.info("IdentifyService: identifying emp_id='%s'", employee_id)
 
+        # Prepend Org Code and 'E' to the employee_id for lookup
+        # Example: IDD + E + 00001 = IDDE00001
+        formatted_id = f"{settings.CLOUD_ORG_CODE}E{employee_id}"
+        logger.debug("IdentifyService: formatted lookup ID: '%s'", formatted_id)
+
         # ── Step 1: Lookup employee in local DB ───────────────────
-        employee = await self._employee_svc.get_by_emp_id(employee_id)
+        employee = await self._employee_svc.get_by_emp_id(formatted_id)
 
         if not employee:
             logger.warning("IdentifyService: emp_id '%s' not found in local DB", employee_id)

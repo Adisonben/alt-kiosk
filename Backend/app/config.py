@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     CLOUD_API_URL: str = "https://alcohol.idclever.net/api"
     CLOUD_API_TOKEN: str = ""      # Bearer token — set in .env, never hardcode
     CLOUD_ORG_ID: str = ""         # Organization UUID — set in .env
+    CLOUD_ORG_CODE: str = "IDD"       # Organization Code (e.g., IDD)
     CLOUD_DEVICE_ID: str = ""      # Device identifier — set in .env
     CLOUD_REQUEST_TIMEOUT: int = 15  # seconds per HTTP request
 
