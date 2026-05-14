@@ -230,7 +230,7 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
               </div>
               <div className="flex-1 space-y-1">
                 <h3 className="text-3xl font-black text-slate-800">{userData?.name}</h3>
-                <p className="text-xl text-primary font-mono font-bold">รหัสพนักงาน: {userData?.id}</p>
+                <p className="text-xl text-primary font-mono font-bold">รหัสพนักงาน: {userData?.emp_id}</p>
               </div>
             </div>
 
