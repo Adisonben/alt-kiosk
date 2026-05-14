@@ -1,0 +1,668 @@
+# ALT Kiosk — Architecture Refactor Plan
+
+## 📋 Executive Summary
+
+Refactor the kiosk system so the **Python backend becomes the single source of truth** for all business logic, employee data, and cloud communication. The React frontend will communicate **only** with the local Python backend — never directly with the cloud.
+
+---
+
+## 🔍 Current State Audit
+
+### What Exists Today
+
+```
+React Frontend (Vite + TailwindCSS)
+├── src/services/api.js         → Direct HTTP calls to cloud API (alcohol.idclever.net)
+├── src/context/WebSocketContext.jsx → WS connection to local Python (ws://localhost:8000/ws)
+├── src/pages/EnterID.jsx       → Fetches employee from cloud, sends fingerprint templates to Python
+├── src/pages/AlcoholTest.jsx   → Sends START_TEST to Python, receives sensor events
+├── src/pages/Result.jsx        → Displays result
+├── public/device_data.json     → Device identity (org_id, token, serial_num)
+
+Python Backend (FastAPI + asyncio)
+├── app/main.py                 → FastAPI lifespan, CORS, WebSocket router
+├── app/api/websocket.py        → WS endpoint, command/event routing
+├── app/core/event_bus.py       → Async fan-out pub/sub (device → system)
+├── app/core/command_bus.py     → Async fan-out pub/sub (system → device)
+├── app/services/alcohol_service.py  → Serial sensor control (threading)
+├── app/services/fingerprint_service.py → Scan + compare via C binaries
+├── app/hardware/alcohol_protocol.py
+├── app/hardware/fingerprint_protocol.py
+```
+
+### Problems Identified
+
+| # | Problem | Location | Severity |
+|---|---------|----------|----------|
+| 1 | React calls Cloud API directly to fetch employee | `api.js` L11-28 | 🔴 Critical |
+| 2 | Employee fingerprint templates sent from React → Python | `EnterID.jsx` L56-70 | 🔴 Critical |
+| 3 | Auth token stored in public JSON file | `device_data.json` | 🟡 Medium |
+| 4 | No local data cache — 100% internet dependent | N/A | 🔴 Critical |
+| 5 | No offline capability for identification | N/A | 🔴 Critical |
+| 6 | Business logic split across React + Python | `EnterID.jsx` | 🟠 High |
+| 7 | No scan logging / audit trail | N/A | 🟡 Medium |
+| 8 | No sync mechanism between device and cloud | N/A | 🟠 High |
+
+---
+
+## 🏗️ Target Architecture
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        KIOSK DEVICE (Raspberry Pi)              │
+│                                                                 │
+│  ┌──────────────┐    WebSocket (localhost)    ┌──────────────┐  │
+│  │   React UI   │ ◄════════════════════════► │ Python        │  │
+│  │              │   { action, employee_id }   │ Backend       │  │
+│  │  - EnterID   │   { result, employee }      │               │  │
+│  │  - Test      │                             │ ┌───────────┐ │  │
+│  │  - Result    │                             │ │ Employee  │ │  │
+│  │              │                             │ │ Service   │ │  │
+│  └──────────────┘                             │ └─────┬─────┘ │  │
+│                                               │       │       │  │
+│                                               │ ┌─────▼─────┐ │  │
+│                                               │ │  SQLite   │ │  │
+│                                               │ │  (local)  │ │  │
+│                                               │ └─────┬─────┘ │  │
+│                                               │       │       │  │
+│  ┌──────────────┐                             │ ┌─────▼─────┐ │  │
+│  │  Fingerprint │ ◄─────── C Binaries ──────► │ │ Device    │ │  │
+│  │  Scanner     │                             │ │ Service   │ │  │
+│  ├──────────────┤                             │ ├───────────┤ │  │
+│  │  Alcohol     │ ◄─────── Serial Port ─────► │ │ Alcohol   │ │  │
+│  │  Sensor      │                             │ │ Service   │ │  │
+│  └──────────────┘                             │ ├───────────┤ │  │
+│                                               │ │ Sync      │ │  │
+│                                               │ │ Service   │ │  │
+│                                               │ └─────┬─────┘ │  │
+│                                               └───────┼───────┘  │
+└───────────────────────────────────────────────────────┼──────────┘
+                                                        │
+                                            HTTPS / REST API
+                                                        │
+                                                        ▼
+                                               ┌──────────────┐
+                                               │  Cloud API   │
+                                               │  (Laravel)   │
+                                               │  + Database  │
+                                               └──────────────┘
+```
+
+### New Data Flow — Identification
+
+```
+ React                  Python                    SQLite           Cloud
+  │                       │                         │                │
+  │─── { action:          │                         │                │
+  │     "identify",       │                         │                │
+  │     employee_id }────►│                         │                │
+  │                       │── SELECT employee ─────►│                │
+  │                       │◄── { name, templates } ─│                │
+  │                       │                         │                │
+  │                       │── trigger scan (C bin)  │                │
+  │◄── { state:           │                         │                │
+  │     "scanning" } ─────│                         │                │
+  │                       │── compare templates     │                │
+  │◄── { result:          │   (C bin match)         │                │
+  │     "match" } ────────│                         │                │
+  │                       │                         │                │
+  │                       │──── POST scan_log ──────────────────────►│
+  │                       │     (async, non-block)  │                │
+```
+
+---
+
+## 🗂️ Target Python Backend Folder Structure
+
+```
+Backend/
+├── app/
+│   ├── __init__.py
+│   ├── main.py                    # FastAPI lifespan (updated)
+│   ├── config.py                  # Settings (add Cloud + DB config)
+│   │
+│   ├── api/
+│   │   ├── __init__.py
+│   │   └── websocket.py           # WS endpoint (updated command map)
+│   │
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── event_bus.py           # (unchanged)
+│   │   └── command_bus.py         # (unchanged)
+│   │
+│   ├── db/                        # 🆕 NEW — Local database layer
+│   │   ├── __init__.py
+│   │   ├── database.py            # SQLite connection manager
+│   │   ├── models.py              # Table definitions
+│   │   └── migrations.py          # Schema init / migration
+│   │
+│   ├── hardware/
+│   │   ├── alcohol_protocol.py    # (unchanged)
+│   │   └── fingerprint_protocol.py # (unchanged)
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── alcohol_service.py     # (unchanged)
+│   │   ├── fingerprint_service.py # (unchanged)
+│   │   ├── employee_service.py    # 🆕 NEW — Local DB CRUD for employees
+│   │   ├── sync_service.py        # 🆕 NEW — Cloud ↔ Device sync
+│   │   └── scan_log_service.py    # 🆕 NEW — Scan result logging
+│   │
+│   └── utils/
+│       ├── logger.py
+│       ├── serial_utils.py
+│       └── http_client.py         # 🆕 NEW — Async HTTP client for Cloud API
+│
+├── data/                          # 🆕 NEW — SQLite database files
+│   └── kiosk.db                   # (auto-created at runtime)
+│
+├── device_data.json               # 🔀 MOVED from React public/ to Backend
+├── requirements.txt               # (updated: add aiosqlite, httpx)
+└── ...
+```
+
+---
+
+## 📊 Database Schema (SQLite)
+
+```sql
+-- Employees synced from cloud
+CREATE TABLE IF NOT EXISTS employees (
+    id              TEXT PRIMARY KEY,   -- UUID from cloud
+    emp_id          TEXT NOT NULL,      -- Display ID (e.g. "ORG001")
+    emp_no          INTEGER,
+    full_name       TEXT NOT NULL,
+    org_id          TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,      -- ISO8601 from cloud
+    synced_at       TEXT NOT NULL       -- When this row was last synced
+);
+
+-- Fingerprint templates linked to employees
+CREATE TABLE IF NOT EXISTS fingerprints (
+    id              TEXT PRIMARY KEY,   -- UUID from cloud
+    employee_id     TEXT NOT NULL,      -- FK → employees.id
+    finger_index    INTEGER,
+    fingerprint_code TEXT NOT NULL,     -- Base64 encoded template
+    updated_at      TEXT NOT NULL,
+    synced_at       TEXT NOT NULL,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+);
+
+-- Sync tracking metadata
+CREATE TABLE IF NOT EXISTS sync_metadata (
+    key             TEXT PRIMARY KEY,   -- e.g. "employees_last_sync"
+    value           TEXT NOT NULL,      -- ISO8601 timestamp or version
+    updated_at      TEXT NOT NULL
+);
+
+-- Local scan logs (queued for cloud upload)
+CREATE TABLE IF NOT EXISTS scan_logs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id     TEXT NOT NULL,
+    scan_type       TEXT NOT NULL,      -- "fingerprint", "alcohol"
+    result          TEXT NOT NULL,      -- "match", "no_match", "pass", "fail"
+    value           REAL,              -- alcohol reading (nullable)
+    scanned_at      TEXT NOT NULL,      -- ISO8601
+    uploaded        INTEGER DEFAULT 0,  -- 0 = pending, 1 = uploaded
+    upload_error    TEXT               -- Last error message if upload failed
+);
+
+CREATE INDEX IF NOT EXISTS idx_employees_emp_id ON employees(emp_id);
+CREATE INDEX IF NOT EXISTS idx_employees_org_id ON employees(org_id);
+CREATE INDEX IF NOT EXISTS idx_fingerprints_employee_id ON fingerprints(employee_id);
+CREATE INDEX IF NOT EXISTS idx_scan_logs_uploaded ON scan_logs(uploaded);
+```
+
+---
+
+## 🚀 Implementation Phases
+
+---
+
+### Phase 1: Local Database + Employee Service
+
+**Goal:** Build the data foundation — SQLite database, models, and the EmployeeService that reads from it.
+
+**No existing behavior changes.** This phase is additive only.
+
+#### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `Backend/app/db/__init__.py` | Package init |
+| `Backend/app/db/database.py` | Async SQLite connection manager (aiosqlite) |
+| `Backend/app/db/models.py` | Table definitions as dataclasses |
+| `Backend/app/db/migrations.py` | Schema creation / versioned migration runner |
+| `Backend/app/services/employee_service.py` | `get_by_emp_id()`, `upsert()`, `get_fingerprints()` |
+
+#### Files to Modify
+
+| File | Change |
+|------|--------|
+| `Backend/app/config.py` | Add `DB_PATH`, `CLOUD_API_URL`, `CLOUD_API_TOKEN` settings |
+| `Backend/app/main.py` | Initialize database on startup (call `migrations.init_db()`) |
+| `Backend/requirements.txt` | Add `aiosqlite` |
+
+#### Acceptance Criteria
+
+- [ ] SQLite database auto-creates on first boot at `Backend/data/kiosk.db`
+- [ ] Schema creates all 4 tables with indexes
+- [ ] `EmployeeService.get_by_emp_id(emp_id)` returns employee + fingerprints from DB
+- [ ] `EmployeeService.upsert(employee_data)` inserts or updates employees
+- [ ] Unit-testable without hardware
+
+#### Estimated Effort: **4-6 hours**
+
+---
+
+### Phase 2: Cloud Sync Engine
+
+**Goal:** Build the SyncService that pulls employee data from cloud into local SQLite.
+
+#### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `Backend/app/utils/http_client.py` | Async HTTP client wrapper (httpx) with retry logic |
+| `Backend/app/services/sync_service.py` | Full/incremental sync, periodic scheduler, retry queue |
+
+#### Files to Modify
+
+| File | Change |
+|------|--------|
+| `Backend/app/config.py` | Add `SYNC_INTERVAL_SECONDS`, `SYNC_RETRY_DELAY` |
+| `Backend/app/main.py` | Start SyncService as background task on startup |
+| `Backend/requirements.txt` | Add `httpx` |
+
+#### Sync Logic Design
+
+```python
+class SyncService:
+    async def start(self):
+        """Called on app startup. Runs full sync then schedules periodic."""
+        await self._full_sync()
+        self._schedule_periodic()
+
+    async def _full_sync(self):
+        """Fetch ALL employees from cloud for this org_id."""
+        # GET /api/device/employees/{org_id}
+        # Upsert all into local DB
+        # Update sync_metadata["employees_last_sync"]
+
+    async def _incremental_sync(self):
+        """Fetch only employees updated since last sync."""
+        last_sync = await self._get_last_sync_time()
+        # GET /api/device/employees/{org_id}?updated_since={last_sync}
+        # Upsert changed records only
+
+    async def _periodic_worker(self):
+        """Run incremental sync every SYNC_INTERVAL_SECONDS."""
+        while True:
+            await asyncio.sleep(settings.SYNC_INTERVAL_SECONDS)
+            try:
+                await self._incremental_sync()
+            except Exception:
+                logger.warning("Sync failed, will retry next cycle")
+
+    async def stop(self):
+        """Cancel periodic task."""
+```
+
+#### Cloud API Requirements
+
+> [!IMPORTANT]
+> The cloud API (Laravel) may need a new endpoint to support incremental sync.
+> Current known endpoint: `GET /api/device/employee/{org_id}/{emp_id}` (single employee)
+> **Needed:** `GET /api/device/employees/{org_id}?updated_since={timestamp}` (bulk + incremental)
+
+#### Acceptance Criteria
+
+- [ ] Full sync downloads all employees for the device's `org_id` on startup
+- [ ] Incremental sync runs every 5 minutes (configurable)
+- [ ] Sync failures are logged and retried next cycle (no crash)
+- [ ] Sync works without blocking the main WS connection
+- [ ] `sync_metadata` table tracks last successful sync timestamp
+
+#### Estimated Effort: **6-8 hours**
+
+---
+
+### Phase 3: Identification Flow Refactor
+
+**Goal:** Change the identification flow so Python handles everything — React only sends `employee_id`, Python does the lookup + verification + logging.
+
+#### New WebSocket Command
+
+```json
+// React → Python
+{
+  "command": "IDENTIFY",
+  "params": {
+    "employee_id": "0001"
+  }
+}
+```
+
+#### New WebSocket Events
+
+```json
+// Python → React: Employee found
+{
+  "type": "identify_result",
+  "success": true,
+  "employee": {
+    "name": "สมชาย รักดี",
+    "emp_id": "0001"
+  },
+  "has_fingerprints": true
+}
+
+// Python → React: Employee not found
+{
+  "type": "identify_result",
+  "success": false,
+  "message": "ไม่พบข้อมูลพนักงาน"
+}
+
+// Python → React: Fingerprint scanning (reuse existing events)
+{ "type": "fingerprint_state", "state": "scanning", ... }
+
+// Python → React: Verification complete
+{
+  "type": "verify_result",
+  "success": true,
+  "match": true,
+  "employee": {
+    "name": "สมชาย รักดี",
+    "emp_id": "0001"
+  }
+}
+```
+
+#### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `Backend/app/services/scan_log_service.py` | Log scan results locally, upload queue to cloud |
+
+#### Files to Modify
+
+| File | Change |
+|------|--------|
+| `Backend/app/api/websocket.py` | Add `IDENTIFY` to `_COMMAND_MAP` |
+| `Backend/app/services/fingerprint_service.py` | New method: `verify_employee(employee_id)` that reads templates from local DB instead of receiving from frontend |
+| `Backend/app/core/command_bus.py` | No change needed (generic) |
+
+#### New Identification Flow (Python-side)
+
+```python
+async def _handle_identify(self, employee_id: str, session_id: str):
+    # 1. Lookup employee in local DB
+    employee = await self._employee_service.get_by_emp_id(employee_id)
+    if not employee:
+        push({"type": "identify_result", "success": False, 
+              "message": "ไม่พบข้อมูลพนักงาน"})
+        return
+
+    # 2. Publish employee found
+    push({"type": "identify_result", "success": True,
+          "employee": {"name": employee.full_name, "emp_id": employee.emp_id},
+          "has_fingerprints": len(employee.fingerprints) > 0})
+
+    # 3. If no fingerprints registered, skip verification
+    if not employee.fingerprints:
+        push({"type": "verify_result", "success": False, "match": False,
+              "message": "ไม่มีข้อมูลลายนิ้วมือในระบบ"})
+        return
+
+    # 4. Trigger fingerprint scan + compare against LOCAL templates
+    templates = [fp.fingerprint_code for fp in employee.fingerprints]
+    match = await self._scan_and_verify(templates)
+
+    # 5. Publish result
+    push({"type": "verify_result", "success": True, "match": match,
+          "employee": {"name": employee.full_name, "emp_id": employee.emp_id}})
+
+    # 6. Log scan result (async, non-blocking)
+    asyncio.create_task(self._scan_log_service.log(
+        employee_id=employee.id,
+        scan_type="fingerprint",
+        result="match" if match else "no_match"
+    ))
+```
+
+#### Acceptance Criteria
+
+- [ ] React sends only `{ command: "IDENTIFY", params: { employee_id } }`
+- [ ] Python looks up employee from local SQLite (not cloud)
+- [ ] Python triggers fingerprint scan and compares locally
+- [ ] Python sends `identify_result` → `fingerprint_state` → `verify_result` events
+- [ ] Scan logs are saved locally and queued for cloud upload
+- [ ] Works fully offline (after initial sync)
+
+#### Estimated Effort: **8-10 hours**
+
+---
+
+### Phase 4: Frontend Simplification
+
+**Goal:** Remove all direct cloud API calls from React. Simplify `EnterID.jsx` to only talk to Python via WebSocket.
+
+#### Files to Delete
+
+| File | Reason |
+|------|--------|
+| `src/services/api.js` | No longer needed — all cloud calls moved to Python |
+
+#### Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/pages/EnterID.jsx` | Remove `fetchEmployeeData` import. Send `IDENTIFY` command via WS. Listen for `identify_result` and `verify_result` events instead of managing fingerprint templates. Remove hardcoded test templates. |
+| `src/context/WebSocketContext.jsx` | No structural change needed (already has sendCommand + subscribe) |
+| `src/App.jsx` | Minor: pass employee data from WS event instead of API response |
+| `.env` | Remove `VITE_API_URL` (no more direct cloud access) |
+| `public/device_data.json` | Move to `Backend/device_data.json` (Python reads it instead) |
+
+#### EnterID.jsx — Before vs After
+
+```diff
+ // BEFORE: EnterID.jsx handleIdentify
+- const responseData = await fetchEmployeeData(employeeId);
+- const data = responseData.data || responseData;
+- const fingerprintCodes = Array.isArray(data.fingerprints)
+-   ? data.fingerprints.map(fp => fp.fingerprint_code).filter(Boolean)
+-   : [];
+- setUserData({
+-   name: data.full_name || data.name,
+-   id: data.emp_id || employeeId,
+-   finger_data: fingerprintCodes
+- });
+- setPhase('verifying');
+-
+- // Then separately sends VERIFY_FINGERPRINT with templates...
+
+ // AFTER: EnterID.jsx handleIdentify
++ sendCommand('IDENTIFY', { employee_id: employeeId });
++ setPhase('loading');
++ // Everything else handled by WS event listeners
+```
+
+```diff
+ // BEFORE: useEffect listens for fingerprint_state + fingerprint_result
+ // AFTER: useEffect listens for identify_result + fingerprint_state + verify_result
+
++ subscribe('identify_result', (data) => {
++   if (data.success) {
++     setUserData({ name: data.employee.name, id: data.employee.emp_id });
++     setPhase('verifying');
++   } else {
++     setScanError(data.message);
++     setPhase('identifying');
++   }
++ });
++
++ subscribe('verify_result', (data) => {
++   if (data.match) {
++     setScanSuccess(true);
++     setTimeout(() => onConfirm(employeeId), 1500);
++   } else {
++     setScanError('ลายนิ้วมือไม่ตรงกัน');
++   }
++ });
+```
+
+#### Acceptance Criteria
+
+- [ ] `src/services/api.js` deleted
+- [ ] No import of `axios` or `fetchEmployeeData` in any frontend file
+- [ ] `EnterID.jsx` sends only WS commands, receives only WS events
+- [ ] `device_data.json` moved out of `public/` to Backend
+- [ ] DevMode simulation still works (mock `identify_result` + `verify_result`)
+- [ ] No `VITE_API_URL` in `.env`
+
+#### Estimated Effort: **4-6 hours**
+
+---
+
+### Phase 5: Reliability & Observability
+
+**Goal:** Add production hardening — offline resilience, scan log upload queue, structured logging.
+
+#### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `Backend/app/services/log_uploader.py` | Background worker: uploads pending scan_logs to cloud |
+
+#### Files to Modify
+
+| File | Change |
+|------|--------|
+| `Backend/app/services/sync_service.py` | Add network health check, auto-reconnect, offline state tracking |
+| `Backend/app/services/scan_log_service.py` | Add retry logic for failed uploads |
+| `Backend/app/config.py` | Add `LOG_UPLOAD_INTERVAL`, `MAX_LOG_RETENTION_DAYS` |
+
+#### Reliability Features
+
+| Feature | Description |
+|---------|-------------|
+| **Offline detection** | SyncService tracks `is_online` flag. When sync fails → offline mode. |
+| **Scan log queue** | All scan results saved locally first. Background worker uploads periodically. |
+| **Log retention** | Auto-delete uploaded logs older than N days to save SD card space. |
+| **Sync status event** | Python publishes `{ type: "sync_status", is_online, last_sync }` so React can show a connectivity indicator. |
+| **Structured logging** | All services log to `logs/alt.log` with consistent format. Add log rotation. |
+
+#### Acceptance Criteria
+
+- [ ] Fingerprint verification works without internet
+- [ ] Scan logs accumulate locally when offline
+- [ ] Scan logs auto-upload when connection restores
+- [ ] React shows sync/connectivity status indicator
+- [ ] Old uploaded logs are cleaned up automatically
+- [ ] All errors are logged with enough context for debugging
+
+#### Estimated Effort: **4-6 hours**
+
+---
+
+## 📅 Phase Summary
+
+| Phase | Name | Dependencies | Effort | Risk |
+|-------|------|-------------|--------|------|
+| **1** | Local Database + Employee Service | None | 4-6h | 🟢 Low |
+| **2** | Cloud Sync Engine | Phase 1 + Cloud API endpoint | 6-8h | 🟡 Medium |
+| **3** | Identification Flow Refactor | Phase 1 + Phase 2 | 8-10h | 🟡 Medium |
+| **4** | Frontend Simplification | Phase 3 | 4-6h | 🟢 Low |
+| **5** | Reliability & Observability | Phase 3 | 4-6h | 🟢 Low |
+
+**Total estimated effort: 26-36 hours**
+
+> [!TIP]
+> Phases 4 and 5 can be done in parallel once Phase 3 is complete.
+
+---
+
+## 🔀 Migration Strategy
+
+### Step-by-Step Rollout
+
+```mermaid
+graph LR
+    A["Phase 1<br/>Add DB<br/>(no behavior change)"] --> B["Phase 2<br/>Start syncing<br/>(background only)"]
+    B --> C["Phase 3<br/>New IDENTIFY flow<br/>(Python-side ready)"]
+    C --> D["Phase 4<br/>Update React<br/>(switch to new flow)"]
+    C --> E["Phase 5<br/>Add reliability<br/>(parallel with Phase 4)"]
+    D --> F["Cutover<br/>Delete old api.js<br/>Remove cloud access from React"]
+```
+
+### Backward Compatibility
+
+During Phases 1-3, the **old flow still works**. React can still call the cloud directly. This allows:
+
+1. **Testing the new backend in parallel** before switching the frontend
+2. **Rollback** — if something breaks, revert Phase 4 changes and old flow resumes
+3. **Gradual validation** — manually query the local DB to verify sync accuracy
+
+### Cutover Checklist
+
+- [ ] Verify local DB has all employees for the org
+- [ ] Verify fingerprint templates match between local DB and cloud
+- [ ] Test identification flow end-to-end with real fingerprint scanner
+- [ ] Test offline scenario (disconnect network → scan → reconnect → verify log uploads)
+- [ ] Remove `api.js` and all cloud imports from React
+- [ ] Update `.env` to remove `VITE_API_URL`
+- [ ] Deploy updated `device_data.json` to Backend directory
+
+---
+
+## ⚠️ Risks & Tradeoffs
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| **Cloud API doesn't support bulk/incremental endpoint** | Phase 2 blocked — can't sync efficiently | Build the Laravel endpoint first. Alternatively, iterate individual employee calls (slower but works). |
+| **SQLite on SD card — write endurance** | SD card wear from frequent writes | Use WAL mode, batch writes, minimize write frequency. Consider USB SSD for production. |
+| **Stale local data** | Employee changes in cloud not reflected immediately | 5-min sync interval is acceptable. Add manual "force sync" WS command for admin use. |
+| **Database corruption** | Power loss during write could corrupt SQLite | Enable WAL mode. Add DB integrity check on startup. Keep backup of last known-good state. |
+| **Increased Python memory usage** | Loading all org employees into SQLite | SQLite is disk-based, not in-memory. Negligible impact even with 10K+ employees. |
+| **Dev mode regression** | Frontend changes may break dev simulation | Keep dev mode mock responses in `EnterID.jsx` aligned with new event types. |
+
+---
+
+## 📦 New Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `aiosqlite` | ^0.20.0 | Async SQLite access for Python |
+| `httpx` | ^0.27.0 | Async HTTP client for cloud API calls |
+
+> [!NOTE]
+> Both are lightweight, well-maintained, and suitable for Raspberry Pi. No native compilation needed.
+
+---
+
+## 🧪 Testing Strategy
+
+| Layer | Approach |
+|-------|----------|
+| **EmployeeService** | Unit test with in-memory SQLite |
+| **SyncService** | Mock httpx responses, verify DB upserts |
+| **Identification flow** | Integration test: mock fingerprint binary, test full WS flow |
+| **Frontend** | Manual test in DevMode with mock WS events |
+| **End-to-end** | Test on Pi with real hardware + network disconnect scenarios |
+
+---
+
+## ❓ Open Questions for You
+
+1. **Cloud API**: Does the Laravel backend already have a bulk endpoint for fetching all employees by org? Or do we need to build `GET /api/device/employees/{org_id}?updated_since=` first?
+
+2. **Sync scope**: Should we sync ALL employees in the org, or only employees that have fingerprints registered?
+
+3. **Alcohol test logging**: Should the alcohol test result also be saved locally and synced to cloud (same pattern as fingerprint logs)?
+
+4. **Force sync**: Do you want a button in the UI (or a WS command) to trigger manual sync?
+
+5. **Phase priority**: Do you want to start with Phase 1 immediately, or address the Cloud API endpoint question first?

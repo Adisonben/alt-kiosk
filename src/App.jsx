@@ -11,7 +11,7 @@ const isDevMode = import.meta.env.VITE_APP_MODE === 'dev';
 
 function App() {
   const [currentStep, setCurrentStep] = useState('home'); // home, id_entry, testing, result
-  const [employeeId, setEmployeeId] = useState('');
+  const [employee, setEmployee] = useState(null);
   const [testResult, setTestResult] = useState(0);
   const [devControls, setDevControls] = useState(null);
 
@@ -19,8 +19,8 @@ function App() {
     setCurrentStep('id_entry');
   };
 
-  const handleConfirmID = (id) => {
-    setEmployeeId(id);
+  const handleConfirmID = (empData) => {
+    setEmployee(empData);
     setCurrentStep('testing');
   };
 
@@ -60,7 +60,7 @@ function App() {
         )}
         
         {currentStep === 'testing' && (
-          <AlcoholTest onComplete={handleTestComplete} isDevMode={isDevMode} setDevControls={setDevControls} />
+          <AlcoholTest employee={employee} onComplete={handleTestComplete} isDevMode={isDevMode} setDevControls={setDevControls} />
         )}
         
         {currentStep === 'result' && (

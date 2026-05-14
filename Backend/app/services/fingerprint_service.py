@@ -1,7 +1,8 @@
 """
 FingerprintService — Manages fingerprint scan and verify operations.
 
-Listens to CommandBus for VERIFY_FINGERPRINT.
+Listens to CommandBus for VERIFY_FINGERPRINT (legacy path, backward-compatible).
+Exposes scan_and_verify() as a public method for IdentifyService (new path).
 Publishes fingerprint_state and fingerprint_result events to EventBus.
 """
 
@@ -63,6 +64,16 @@ class FingerprintService:
     def is_alive(self) -> bool:
         return self._cmd_listener_task is not None and not self._cmd_listener_task.done()
 
+    async def scan_and_verify(
+        self, target_templates: list, session_id: Optional[str] = None
+    ) -> bool:
+        """
+        Public entry point for IdentifyService.
+        Runs the full scan + compare workflow and returns True if match found.
+        Also publishes fingerprint_state and fingerprint_result events.
+        """
+        return await self._verify_workflow(target_templates, session_id)
+
     async def _listen_commands(self) -> None:
         """Async loop: wait for commands from the CommandBus."""
         try:
@@ -79,8 +90,10 @@ class FingerprintService:
         except asyncio.CancelledError:
             pass
 
-    async def _verify_workflow(self, target_templates: list, session_id: Optional[str]) -> None:
-        """Execute the full scan and compare flow."""
+    async def _verify_workflow(
+        self, target_templates: list, session_id: Optional[str]
+    ) -> bool:
+        """Execute the full scan and compare flow. Returns True if match found."""
         def push(event: dict):
             if session_id:
                 event["session_id"] = session_id
@@ -100,7 +113,7 @@ class FingerprintService:
                 "match": False,
                 "message": f"Scan failed: {scan_result.get('reason')}"
             })
-            return
+            return False
 
         # 3. State: Processing
         push({"type": "fingerprint_state", "state": "processing", "message": _STATUS_MSG["processing"]})
@@ -115,7 +128,7 @@ class FingerprintService:
                 "match": False,
                 "message": "Invalid scanned template size"
             })
-            return
+            return False
 
         # 4. Compare against provided templates
         match_found = False
@@ -154,6 +167,8 @@ class FingerprintService:
                 "match": False,
                 "message": error_msg or "No match found"
             })
+
+        return match_found
 
     # ── Blocking helpers (run in executor) ────────────────────
 

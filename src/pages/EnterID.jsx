@@ -2,12 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Fingerprint, Check, ArrowLeft, User, Loader2 } from 'lucide-react';
 import NumericKeypad from '../components/kiosk/NumericKeypad';
-import { fetchEmployeeData } from '../services/api';
 import { useWebSocket } from '../context/WebSocketContext';
-
-// Test Fingerprint Data
-const finger1_template = "IzXhJ205qqb7m0Z0CstIsd9bWZ/Ns+5NLDejMa+IAKwCbn+AwCHbqT5Xk0RJdqsbCKN1QlbPpkkdh0vUS5JQd7gaXvxmI8ZB5q1xMY47LiisilMLswj3gtYo4SoN4SHM8Br7Vo2u3M1FPQAGNIy23HSPfrt6h341/0dP/9d5ok0bLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fA==";
-const finger2_template = "f+o/bulopwVzRiIZtxlRt/whg1M4mWFl/Im4w4d4mM72pf36PsAxm4gkYXf3Quc0iOVG+6I6ifSKjmL3Acsd1unm6WPRIRSsHHCltcN0vkINNf272lILqUHScL2cOnV+IatvJeSSCBq4e3WyyAtbamrFrfeGX3XtpSR4+IuYNOwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fBstyeuvDV9gKmT/R/Bs+XwbLcnrrw1fYCpk/0fwbPl8Gy3J668NX2AqZP9H8Gz5fA==";
 
 const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
   const [phase, setPhase] = useState('identifying'); // identifying, loading, verifying
@@ -39,42 +34,21 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
     setScanError(null);
     setScanSuccess(false);
     setScanRetries(0);
-    try {
-      if (isDevMode) {
-        // Mock API query for Dev Mode
-        setTimeout(() => {
-          setUserData({
-            name: 'สมชาย รักดี',
-            id: employeeId,
-            finger_data: [finger1_template, finger2_template] // Mock array
-          });
-          setPhase('verifying');
-          setScanStatusMsg('กำลังรอรับข้อมูลลายนิ้วมือ...');
-        }, 1000);
-      } else {
-        // Actual REST API Call
-        const responseData = await fetchEmployeeData(employeeId);
 
-        // Extract data assuming the API might return it wrapped in a data property
-        const data = responseData.data || responseData;
-
-        // Map fingerprints array to extract the fingerprint_code strings
-        const fingerprintCodes = Array.isArray(data.fingerprints)
-          ? data.fingerprints.map(fp => fp.fingerprint_code).filter(Boolean)
-          : [];
-
+    if (isDevMode) {
+      // Mock flow for Dev Mode
+      setTimeout(() => {
         setUserData({
-          name: data.full_name || data.name || 'ไม่ทราบชื่อ',
-          id: data.emp_id || employeeId,
-          finger_data: fingerprintCodes.length > 0 ? fingerprintCodes : (data.fingerprint_template || data.finger_data || [])
+          name: 'สมชาย รักดี',
+          id: employeeId
         });
         setPhase('verifying');
         setScanStatusMsg('กำลังรอรับข้อมูลลายนิ้วมือ...');
-      }
-    } catch (err) {
-      setScanError('ไม่พบข้อมูลพนักงาน หรือเกิดข้อผิดพลาด');
-      setPhase('identifying');
-      setEmployeeId('');
+      }, 1000);
+    } else {
+      // NEW: Send IDENTIFY command to Python backend
+      sendCommand('IDENTIFY', { employee_id: employeeId });
+      // The rest is handled via WS subscriptions below
     }
   };
 
@@ -92,63 +66,76 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
     setScanError(null);
     setScanSuccess(false);
     setScanRetries(0);
+    setUserData(null);
   };
 
   const handleRetryScan = () => {
     setScanError(null);
     setScanStatusMsg('กำลังรอรับข้อมูลลายนิ้วมือ...');
-    if (!isDevMode && userData) {
-      const templates = Array.isArray(userData.finger_data) ? userData.finger_data : [userData.finger_data].filter(Boolean);
-      sendCommand('VERIFY_FINGERPRINT', { target_templates: templates });
+    if (!isDevMode) {
+      // Re-trigger the same IDENTIFY command
+      sendCommand('IDENTIFY', { employee_id: employeeId });
     }
   };
 
-  // Phase 2: Send WS command when entering verifying phase
-  useEffect(() => {
-    if (phase === 'verifying' && userData && !isDevMode) {
-      const templates = Array.isArray(userData.finger_data) ? userData.finger_data : [userData.finger_data].filter(Boolean);
-      sendCommand('VERIFY_FINGERPRINT', { target_templates: templates });
-    }
-  }, [phase, userData, isDevMode, sendCommand]); // Only runs when phase changes to verifying
-
   // Handle WS Messages via Pub/Sub
   useEffect(() => {
-    if (phase === 'verifying' && !isDevMode) {
-      const unsubState = subscribe('fingerprint_state', (data) => {
-        if (data.message) {
-          setScanStatusMsg(data.message.split(' / ')[0]); // Use Thai part
-        }
-      });
+    if (isDevMode) return;
 
-      const unsubResult = subscribe('fingerprint_result', (data) => {
-        if (data.success && data.match) {
-          setScanSuccess(true);
-          setScanStatusMsg('ตรวจสอบลายนิ้วมือสำเร็จ!');
-          setTimeout(() => {
-            onConfirm(employeeId);
-          }, 1500);
-        } else {
-          setScanRetries(prev => {
-            const next = prev + 1;
-            if (next >= 3) {
-              setScanError('สแกนไม่สำเร็จ ระบบกำลังกลับสู่หน้าหลัก...');
-              setTimeout(() => {
-                if (onCancel) onCancel();
-              }, 3000);
-            } else {
-              setScanError(`ลายนิ้วมือไม่ตรงกัน (${next}/3 ครั้ง)`);
-            }
-            return next;
-          });
-        }
-      });
+    // 1. Handle Employee Lookup Result
+    const unsubIdentify = subscribe('identify_result', (data) => {
+      if (data.success) {
+        setUserData({
+          id: data.employee.id,
+          name: data.employee.name,
+          emp_id: data.employee.emp_id
+        });
+        setPhase('verifying');
+        setScanStatusMsg('กำลังรอรับข้อมูลลายนิ้วมือ...');
+      } else {
+        setScanError(data.message || 'ไม่พบข้อมูลพนักงาน');
+        setPhase('identifying');
+        setEmployeeId('');
+      }
+    });
 
-      return () => {
-        unsubState();
-        unsubResult();
-      };
-    }
-  }, [phase, isDevMode, onConfirm, employeeId, subscribe]);
+    // 2. Handle Hardware Status Updates
+    const unsubState = subscribe('fingerprint_state', (data) => {
+      if (data.message) {
+        setScanStatusMsg(data.message.split(' / ')[0]); // Use Thai part
+      }
+    });
+
+    // 3. Handle Final Verification Result
+    const unsubVerify = subscribe('verify_result', (data) => {
+      if (data.success && data.match) {
+        setScanSuccess(true);
+        setScanStatusMsg('ตรวจสอบลายนิ้วมือสำเร็จ!');
+        setTimeout(() => {
+          onConfirm(userData);
+        }, 1500);
+      } else {
+        setScanRetries(prev => {
+          const next = prev + 1;
+          if (next >= 3) {
+            setScanError('สแกนไม่สำเร็จ ระบบกำลังกลับสู่หน้าหลัก...');
+            setTimeout(() => {
+              if (onCancel) onCancel();
+            }, 3000);
+          } else {
+            setScanError(`ลายนิ้วมือไม่ตรงกัน (${next}/3 ครั้ง)`);
+          }
+          return next;
+        });
+      }
+    });
+
+    return () => {
+      unsubIdentify();
+      unsubState();
+      unsubVerify();
+    };
+  }, [isDevMode, onConfirm, onCancel, employeeId, subscribe]);
 
   // Dev Controls
   useEffect(() => {

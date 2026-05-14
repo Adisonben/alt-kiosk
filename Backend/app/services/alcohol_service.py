@@ -44,9 +44,11 @@ class AlcoholService:
         stop()  → stops sensor thread, unsubscribes.
     """
 
-    def __init__(self, event_bus, command_bus):
+    def __init__(self, event_bus, command_bus, scan_log_svc, http_client):
         self._event_bus = event_bus
         self._command_bus = command_bus
+        self._scan_log_svc = scan_log_svc
+        self._http = http_client
         self._cmd_queue: Optional[asyncio.Queue] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -103,7 +105,8 @@ class AlcoholService:
                 session_id = cmd.get("session_id")
 
                 if cmd_type == "START_ALCOHOL":
-                    self._start_measurement(session_id)
+                    employee_id = cmd.get("params", {}).get("employee_id")
+                    self._start_measurement(session_id, employee_id)
                 elif cmd_type in ("STOP_ALCOHOL", "RESET"):
                     self._stop_measurement()
                 elif cmd_type == "RESET_SENSOR":
@@ -113,7 +116,9 @@ class AlcoholService:
 
     # ── Measurement control ───────────────────────────────────
 
-    def _start_measurement(self, session_id: Optional[str] = None) -> None:
+    def _start_measurement(
+        self, session_id: Optional[str] = None, employee_id: Optional[str] = None
+    ) -> None:
         """Spawn the sensor worker thread."""
         with self._state_lock:
             if self._is_active:
@@ -124,12 +129,15 @@ class AlcoholService:
         self._stop_event.clear()
         self._worker_thread = threading.Thread(
             target=self._measurement_worker,
-            args=(session_id,),
+            args=(session_id, employee_id),
             daemon=True,
             name="alcohol-sensor",
         )
         self._worker_thread.start()
-        logger.info("AlcoholService: measurement started (session=%s)", session_id)
+        logger.info(
+            "AlcoholService: measurement started (session=%s, employee=%s)",
+            session_id, employee_id
+        )
 
     def _stop_measurement(self) -> None:
         """Signal the worker thread to stop."""
@@ -218,7 +226,9 @@ class AlcoholService:
 
     # ── Sensor worker thread ──────────────────────────────────
 
-    def _measurement_worker(self, session_id: Optional[str]) -> None:
+    def _measurement_worker(
+        self, session_id: Optional[str], employee_id: Optional[str]
+    ) -> None:
         """
         Blocking thread: open serial, send commands, read sensor data,
         publish events to EventBus via publish_threadsafe.
@@ -304,12 +314,29 @@ class AlcoholService:
                 result = parse_result(decoded)
                 if result:
                     result_found = True
+                    val = result["value"]
+                    status = result["status"]
+
                     push({
                         "type": "alcohol_result",
                         "success": True,
-                        "value": result["value"],
-                        "status": result["status"],
+                        "value": val,
+                        "status": status,
                     })
+
+                    # Try to upload result immediately, fallback to local DB on failure
+                    if employee_id:
+                        async def upload_or_log():
+                            success = await self._http.post_scan_result(
+                                employee_id=employee_id,
+                                scan_type="alcohol",
+                                result="pass" if status == "OK" else "fail",
+                                value=val
+                            )
+                            if not success:
+                                await self._scan_log_svc.log_alcohol(employee_id, val, status)
+
+                        asyncio.run_coroutine_threadsafe(upload_or_log(), self._loop)
                     continue
 
                 # Check for state

@@ -1,0 +1,179 @@
+========== Phase 1 ==========
+
+1. Database Layer (New)
+database.py
+: Async SQLite connection manager using aiosqlite.
+models.py
+: Plain Python dataclasses for Employee, Fingerprint, SyncMetadata, and ScanLog.
+migrations.py
+: Schema initialization script. Uses WAL (Write-Ahead Logging) mode for performance and safety on SD cards.
+Removed emp_no from the employees table as per your instructions.
+2. Service Layer (New)
+employee_service.py
+: Central gateway for all employee and fingerprint data. Includes upsert_many for efficient syncing in Phase 2.
+3. Backend Core Updates
+config.py
+: Expanded to include DB paths, cloud credentials, and sync settings.
+main.py
+: Updated the lifespan function to:
+Initialize the SQLite database schema.
+Start the EmployeeService.
+Log the current employee count on startup.
+requirements.txt
+: Added aiosqlite and httpx.
+4. Configuration & Git
+.env
+: Populated with your real org_id and token.
+.gitignore
+: Updated to ignore .db files and the data/ directory.
+
+1. Install Dependencies `pip install -r requirements.txt`
+2. Start the Backend `python app/main.py`
+3. Verify Startup
+Check the console logs. You should see:
+
+INFO: DB: schema ready (version 1)
+INFO: === Alcohol Testing System ready — 0 employees in local DB ===
+4. Check Database File
+Confirm that Backend/data/kiosk.db has been created.
+
+========== Phase 2 ==========
+
+New files added:
+- app/utils/http_client.py      (Cloud HTTP client with retry)
+- app/services/sync_service.py  (Cloud sync worker)
+
+Modified files:
+- app/main.py       (SyncService wired into lifespan)
+- app/api/websocket.py  (FORCE_SYNC command added)
+
+1. Make sure .env has the correct values:
+   CLOUD_API_TOKEN=<your-bearer-token>
+   CLOUD_ORG_ID=<your-org-uuid>
+   CLOUD_API_URL=https://alcohol.idclever.net/api
+
+2. Start the Backend `python app/main.py`
+
+3. Verify Startup Logs — you should see:
+   INFO: SyncService: started
+   INFO: SyncService: running initial full sync...
+   INFO: SyncService: full sync complete — X employees upserted
+   (If cloud endpoint not ready yet, you will see a WARNING and it will retry — that is OK)
+
+4. After sync completes, restart and check:
+   INFO: === Alcohol Testing System ready — X employees in local DB ===
+   (X should match the number of employees in your org)
+
+5. Test Force Sync via WebSocket:
+   Send: { "command": "FORCE_SYNC", "params": {} }
+   Expect event: { "type": "sync_status", "is_online": true, "last_sync": "...", "employee_count": X }
+
+NOTE: If cloud endpoint GET /api/device/employees/{org_id} is not yet created,
+the initial sync will fail silently with a warning. That is expected at this stage.
+The DB will still have 0 employees until the endpoint is ready.
+
+========== Phase 3 ==========
+
+New files added:
+- app/services/scan_log_service.py   (local scan result logger)
+- app/services/identify_service.py   (identification orchestrator)
+
+Modified files:
+- app/services/fingerprint_service.py  (added public scan_and_verify() method)
+- app/api/websocket.py                 (added IDENTIFY command)
+- app/main.py                          (wired ScanLogService + IdentifyService)
+
+1. Start the Backend `python app/main.py`
+
+2. Verify Startup Logs — you should see:
+   INFO: IdentifyService: started
+   (All services should start without error)
+
+3. Test IDENTIFY flow via WebSocket (use wscat or browser devtools):
+   Send:
+     { "command": "IDENTIFY", "params": { "employee_id": "<emp_id_in_local_db>" } }
+
+   Expected events in order:
+     a) { "type": "identify_result", "success": true, "employee": { "name": "...", "emp_id": "..." }, "has_fingerprints": true }
+     b) { "type": "fingerprint_state", "state": "scanning", "message": "..." }
+     c) { "type": "fingerprint_state", "state": "processing", "message": "..." }
+     d) { "type": "verify_result", "success": true, "match": true/false, "employee": {...} }
+     e) { "type": "fingerprint_result", ... }   <- still published for backward compat
+
+4. Test NOT FOUND case:
+   Send: { "command": "IDENTIFY", "params": { "employee_id": "INVALID" } }
+   Expect: { "type": "identify_result", "success": false, "message": "ไม่พบข้อมูลพนักงาน" }
+
+5. Confirm scan log is saved:
+   Open kiosk.db with any SQLite viewer and check the scan_logs table.
+   After a successful identify, a row should appear with uploaded=0.
+
+NOTE: Old VERIFY_FINGERPRINT command still works (backward-compatible).
+React still uses the old flow until Phase 4.
+
+========== Phase 4 ==========
+
+Modified files:
+- src/pages/EnterID.jsx      (Refactored to use IDENTIFY command)
+- src/services/api.js        (Deprecated/Emptied)
+- public/device_data.json   (Deprecated/Emptied)
+
+1. Run the React Frontend:
+   `npm run dev`
+
+2. Open the Kiosk UI in your browser.
+
+3. Enter an Employee ID.
+   - You should see "กำลังตรวจสอบข้อมูล..." (Loading)
+   - The React app should NOT make any HTTP requests to alcohol.idclever.net (check Network tab).
+   - Instead, check the WebSocket tab — you should see the "IDENTIFY" command being sent to the Python backend.
+
+4. Verify the flow:
+   - Identify Step: The UI should transition to the User profile card once Python returns `identify_result`.
+   - Verify Step: The UI should update with hardware scanning status from Python.
+   - Result Step: The UI should automatically transition to the next page on success.
+
+5. Dev Mode:
+   - Verify that Dev Mode still works (uses local mock timeouts instead of WS commands).
+
+NOTE: If everything works, you have successfully migrated from a Cloud-coupled frontend to a Backend-driven architecture!
+
+========== Phase 5 ==========
+
+New files added:
+- app/services/log_uploader_service.py (Syncs local logs to Cloud)
+
+Modified files:
+- app/services/alcohol_service.py  (Now logs results to local DB)
+- app/main.py                      (Wired LogUploaderService and shared HTTP client)
+- src/App.jsx                      (Stores full employee object)
+- src/pages/EnterID.jsx            (Passes internal ID to parent)
+- src/pages/AlcoholTest.jsx        (Passes internal ID to backend)
+
+1. Start the Backend `python app/main.py`
+2. Run the Frontend `npm run dev`
+
+3. Complete a full test flow:
+   - Enter ID → Verify Fingerprint → Complete Alcohol Test.
+   - On completion, check the Python logs:
+     INFO: AlcoholService: result found ...
+     INFO: ScanLogService: alcohol logged — employee=...
+
+4. Verify local DB:
+   - Check `scan_logs` table in `kiosk.db`.
+   - You should see both a `fingerprint` log and an `alcohol` log for the session.
+   - `uploaded` column should initially be 0.
+
+5. Verify Log Upload:
+   - Every 1 minute (default), the `LogUploaderService` will try to POST to the cloud.
+   - Check the Python logs:
+     INFO: LogUploaderService: attempting to upload 2 logs
+   - If the cloud endpoint is ready, you should see:
+     DEBUG: LogUploaderService: log X uploaded successfully
+   - Check the DB again; `uploaded` should now be 1.
+
+NOTE: All business logic is now fully refactored. The system is offline-capable,
+establishing Python as the Single Source of Truth.
+
+Congratulations! The refactor is complete.
+

@@ -5,7 +5,7 @@ import StatusCircle from '../components/kiosk/StatusCircle';
 import ProgressIndicator from '../components/kiosk/ProgressIndicator';
 import { useWebSocket } from '../context/WebSocketContext';
 
-const AlcoholTest = ({ onComplete, isDevMode, setDevControls }) => {
+const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
   const [status, setStatus] = useState('preparing'); // preparing, ready, detected, error, sampling, analyzing
   const [progress, setProgress] = useState(0); // Progress is just for animation now
   
@@ -29,9 +29,9 @@ const AlcoholTest = ({ onComplete, isDevMode, setDevControls }) => {
   // Send START command on mount
   useEffect(() => {
     if (!isDevMode) {
-      sendCommand('START_TEST');
+      sendCommand('START_TEST', { employee_id: employee?.id });
     }
-  }, [isDevMode, sendCommand]);
+  }, [isDevMode, sendCommand, employee]);
 
   // Handle incoming WebSocket messages via Pub/Sub
   useEffect(() => {
