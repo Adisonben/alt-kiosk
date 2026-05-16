@@ -200,15 +200,8 @@ class IdentifyService:
             employee_id, "MATCH" if match else "NO MATCH",
         )
 
-        # ── Step 6: Post result to API (fallback to local log) ───
-        async def upload_or_log():
-            result_str = "match" if match else "no_match"
-            success = await self._http.post_scan_result(
-                employee_id=employee.id,
-                scan_type="fingerprint",
-                result=result_str,
-            )
-            if not success:
-                await self._scan_log_svc.log_fingerprint(employee.id, match)
-
-        asyncio.create_task(upload_or_log(), name=f"upload-fp-{employee.id}")
+        # ── Step 6: Log result locally (LogUploader will sync to cloud) ───
+        asyncio.create_task(
+            self._scan_log_svc.log_fingerprint(employee.id, match),
+            name=f"log-fp-{employee.id}",
+        )
