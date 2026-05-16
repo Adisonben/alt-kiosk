@@ -31,9 +31,8 @@ class ScanLogService:
 
     # ── Write ─────────────────────────────────────────────────────
 
-    async def log_fingerprint(self, employee_id: str, match: bool) -> None:
-        """Save a fingerprint scan result."""
-        result = "match" if match else "no_match"
+    async def log_fingerprint(self, employee_id: str, result: str) -> None:
+        """Save a fingerprint scan result (match, no_match, no_templates, etc)."""
         await self._insert(
             employee_id=employee_id,
             scan_type="fingerprint",
@@ -64,15 +63,6 @@ class ScanLogService:
             employee_id, value, result,
         )
 
-    async def log_user_identification(self, employee_id: str) -> None:
-        """Record that a user identified themselves at the kiosk."""
-        await self._insert(
-            employee_id=employee_id,
-            scan_type="identification",
-            result="identified",
-            value=None,
-        )
-        logger.info("ScanLogService: user identified — employee=%s", employee_id)
 
     # ── Read (used by LogUploaderService in Phase 5) ──────────────
 

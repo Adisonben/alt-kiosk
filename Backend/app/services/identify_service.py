@@ -150,11 +150,7 @@ class IdentifyService:
             "has_fingerprints": len(employee.fingerprints) > 0,
         })
 
-        # Log user identification locally for audit (always)
-        asyncio.create_task(
-            self._scan_log_svc.log_user_identification(employee.id),
-            name=f"log-user-{employee.id}",
-        )
+        # (Merged logging: we now only log once at the end of the workflow)
 
         # ── Step 3: Guard — no fingerprints enrolled ──────────────
         if not employee.fingerprints:
@@ -167,6 +163,12 @@ class IdentifyService:
                 "match": False,
                 "message": "ไม่มีข้อมูลลายนิ้วมือในระบบ",
             })
+            
+            # Log single result: no templates
+            asyncio.create_task(
+                self._scan_log_svc.log_fingerprint(employee.id, "no_templates"),
+                name=f"log-fp-{employee.id}",
+            )
             return
 
         # ── Step 4: Run fingerprint scan + compare ────────────────
@@ -182,6 +184,12 @@ class IdentifyService:
                 "match": False,
                 "message": "เกิดข้อผิดพลาดกับอุปกรณ์สแกนลายนิ้วมือ",
             })
+
+            # Log single result: device error
+            asyncio.create_task(
+                self._scan_log_svc.log_fingerprint(employee.id, "scan_error"),
+                name=f"log-fp-{employee.id}",
+            )
             return
 
         # ── Step 5: Publish verification result ───────────────────
@@ -202,6 +210,8 @@ class IdentifyService:
 
         # ── Step 6: Log result locally (LogUploader will sync to cloud) ───
         asyncio.create_task(
-            self._scan_log_svc.log_fingerprint(employee.id, match),
+            self._scan_log_svc.log_fingerprint(
+                employee.id, "match" if match else "no_match"
+            ),
             name=f"log-fp-{employee.id}",
         )
