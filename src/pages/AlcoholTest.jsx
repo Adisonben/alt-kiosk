@@ -28,8 +28,8 @@ const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
 
   // Send START command on mount
   useEffect(() => {
-    if (!isDevMode) {
-      sendCommand('START_TEST', { employee_id: employee?.id });
+    if (!isDevMode && employee) {
+      sendCommand('START_TEST', { employee_id: employee.id });
     }
   }, [isDevMode, sendCommand, employee]);
 
@@ -134,7 +134,7 @@ const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
   const handleRetry = () => {
     setStatus('preparing');
     if (!isDevMode) {
-      sendCommand('START_TEST');
+      sendCommand('START_TEST', { employee_id: employee?.id });
     }
   };
 

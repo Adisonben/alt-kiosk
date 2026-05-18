@@ -30,7 +30,7 @@ function App() {
   };
 
   const handleReset = () => {
-    setEmployeeId('');
+    setEmployee(null);
     setTestResult(0);
     setCurrentStep('home');
   };
@@ -39,7 +39,9 @@ function App() {
     if (isDevMode) {
       setCurrentStep(step);
       // Ensure we have some mockup data if skipping directly to test/result
-      if (step === 'testing' && !employeeId) setEmployeeId('12345678');
+      if (step === 'testing' && !employee) {
+        setEmployee({ id: 1, name: 'สมชาย รักดี', emp_id: 'IDDE00001' });
+      }
       if (step === 'result' && testResult === 0) setTestResult(25); // Mock a pass result
     }
   };
