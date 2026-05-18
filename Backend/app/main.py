@@ -18,6 +18,7 @@ from app.services.sync_service import SyncService
 from app.services.scan_log_service import ScanLogService
 from app.services.identify_service import IdentifyService
 from app.services.log_uploader_service import LogUploaderService
+from app.services.device_service import DeviceService
 from app.utils.http_client import CloudHttpClient
 from app.api.websocket import router as ws_router
 
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
         employee_svc, fingerprint_svc, scan_log_svc, http_client, event_bus, command_bus
     )
     log_uploader_svc = LogUploaderService(scan_log_svc, http_client)
+    device_svc = DeviceService(http_client)
 
     # Store in app.state for access by routers and services
     app.state.db = db
@@ -62,6 +64,7 @@ async def lifespan(app: FastAPI):
     app.state.scan_log_svc = scan_log_svc
     app.state.identify_svc = identify_svc
     app.state.log_uploader_svc = log_uploader_svc
+    app.state.device_svc = device_svc
     app.state.event_bus = event_bus
     app.state.command_bus = command_bus
     app.state.alcohol_svc = alcohol_svc
@@ -69,6 +72,7 @@ async def lifespan(app: FastAPI):
 
     # Start background services
     await http_client.start()
+    await device_svc.start()
     await alcohol_svc.start()
     await fingerprint_svc.start()
     await sync_svc.start()
@@ -86,6 +90,7 @@ async def lifespan(app: FastAPI):
 
     # --- Shutdown ---
     logger.info("=== %s shutting down ===", settings.PROJECT_NAME)
+    await device_svc.stop()
     await log_uploader_svc.stop()
     await identify_svc.stop()
     await sync_svc.stop()

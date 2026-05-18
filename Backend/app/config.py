@@ -23,10 +23,30 @@ class Settings(BaseSettings):
     # ── Cloud API ─────────────────────────────────────────────────
     CLOUD_API_URL: str = "https://alcohol.idclever.net/api"
     CLOUD_API_TOKEN: str = ""      # Bearer token — set in .env, never hardcode
-    CLOUD_ORG_ID: str = ""         # Organization UUID — set in .env
-    CLOUD_ORG_CODE: str = "IDD"       # Organization Code (e.g., IDD)
-    CLOUD_DEVICE_ID: str = ""      # Device identifier — set in .env
     CLOUD_REQUEST_TIMEOUT: int = 15  # seconds per HTTP request
+
+    @property
+    def CLOUD_ORG_ID(self) -> str:
+        return self._read_device_data("org_id", "")
+
+    @property
+    def CLOUD_ORG_CODE(self) -> str:
+        return self._read_device_data("org_code", "IDD")
+
+    CLOUD_DEVICE_ID: str = ""      # Device identifier — set in .env
+
+    def _read_device_data(self, key: str, default: str) -> str:
+        import json
+        import os
+        path = "data/device_data.json"
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get(key, default)
+            except Exception:
+                pass
+        return default
 
     # ── Sync ──────────────────────────────────────────────────────
     SYNC_INTERVAL_SECONDS: int = 300    # 5 minutes between incremental syncs
