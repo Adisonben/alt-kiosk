@@ -46,6 +46,7 @@ class IdentifyService:
         http_client,
         event_bus,
         command_bus,
+        alcohol_svc,
     ) -> None:
         self._employee_svc = employee_svc
         self._fingerprint_svc = fingerprint_svc
@@ -53,6 +54,7 @@ class IdentifyService:
         self._http = http_client
         self._event_bus = event_bus
         self._command_bus = command_bus
+        self._alcohol_svc = alcohol_svc
 
         self._cmd_queue: Optional[asyncio.Queue] = None
         self._cmd_listener_task: Optional[asyncio.Task] = None
@@ -192,12 +194,16 @@ class IdentifyService:
             )
             return
 
+        if match:
+            self._alcohol_svc.set_active_employee_id(employee.id)
+
         # ── Step 5: Publish verification result ───────────────────
         push({
             "type": "verify_result",
             "success": True,
             "match": match,
             "employee": {
+                "id": employee.id,
                 "name": employee.full_name,
                 "emp_id": employee.emp_id,
             },

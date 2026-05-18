@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
     fingerprint_svc = FingerprintService(event_bus, command_bus)
     sync_svc = SyncService(db, employee_svc, http_client, event_bus, command_bus)
     identify_svc = IdentifyService(
-        employee_svc, fingerprint_svc, scan_log_svc, http_client, event_bus, command_bus
+        employee_svc, fingerprint_svc, scan_log_svc, http_client, event_bus, command_bus, alcohol_svc
     )
     log_uploader_svc = LogUploaderService(scan_log_svc, http_client)
     device_svc = DeviceService(http_client)

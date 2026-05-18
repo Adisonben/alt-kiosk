@@ -58,6 +58,7 @@ class AlcoholService:
         self._is_active = False
         self._is_connected = False
         self._cmd_listener_task: Optional[asyncio.Task] = None
+        self._active_employee_id: Optional[str] = None
 
     # ── Lifecycle ─────────────────────────────────────────────
 
@@ -94,6 +95,11 @@ class AlcoholService:
         with self._state_lock:
             return self._is_connected
 
+    def set_active_employee_id(self, employee_id: str) -> None:
+        """Store the currently active employee session ID."""
+        self._active_employee_id = employee_id
+        logger.info("AlcoholService: session active employee_id set to '%s'", employee_id)
+
     # ── Command listener ──────────────────────────────────────
 
     async def _listen_commands(self) -> None:
@@ -106,9 +112,12 @@ class AlcoholService:
 
                 if cmd_type == "START_ALCOHOL":
                     employee_id = cmd.get("params", {}).get("employee_id")
+                    if not employee_id:
+                        employee_id = self._active_employee_id
                     self._start_measurement(session_id, employee_id)
                 elif cmd_type in ("STOP_ALCOHOL", "RESET"):
                     self._stop_measurement()
+                    self._active_employee_id = None
                 elif cmd_type == "RESET_SENSOR":
                     self._reset_sensor()
         except asyncio.CancelledError:
@@ -375,4 +384,5 @@ class AlcoholService:
             with self._state_lock:
                 self._is_connected = False
                 self._is_active = False
+            self._active_employee_id = None
             logger.info("AlcoholService: worker thread exited")

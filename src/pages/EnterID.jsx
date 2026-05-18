@@ -111,8 +111,13 @@ const EnterID = ({ onConfirm, onCancel, isDevMode, setDevControls }) => {
       if (data.success && data.match) {
         setScanSuccess(true);
         setScanStatusMsg('ตรวจสอบลายนิ้วมือสำเร็จ!');
+        const verifiedEmployee = {
+          id: data.employee?.id,
+          name: data.employee?.name,
+          emp_id: data.employee?.emp_id
+        };
         setTimeout(() => {
-          onConfirm(userData);
+          onConfirm(verifiedEmployee);
         }, 1500);
       } else {
         setScanRetries(prev => {
