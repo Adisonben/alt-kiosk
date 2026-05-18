@@ -14,14 +14,13 @@ class Settings(BaseSettings):
 
     # ── Hardware ──────────────────────────────────────────────────
     ALCOHOL_PORT: str | None = None  # None = auto-detect serial port
-    ALCOHOL_BAUDRATE: int = 4800
 
     # ── Local Database ────────────────────────────────────────────
     # Path to SQLite file. Relative paths resolve from the Backend/ directory.
     DB_PATH: str = "data/kiosk.db"
 
     # ── Cloud API ─────────────────────────────────────────────────
-    CLOUD_API_URL: str = "https://alcohol.idclever.net/api"
+    CLOUD_API_URL: str = ""
     CLOUD_API_TOKEN: str = ""      # Bearer token — set in .env, never hardcode
     CLOUD_REQUEST_TIMEOUT: int = 15  # seconds per HTTP request
 
@@ -31,7 +30,7 @@ class Settings(BaseSettings):
 
     @property
     def CLOUD_ORG_CODE(self) -> str:
-        return self._read_device_data("org_code", "IDD")
+        return self._read_device_data("org_code", "")
 
     CLOUD_DEVICE_ID: str = ""      # Device identifier — set in .env
 
@@ -54,7 +53,6 @@ class Settings(BaseSettings):
 
     # ── Scan Log Upload ───────────────────────────────────────────
     LOG_UPLOAD_INTERVAL_SECONDS: int = 60   # How often to flush pending logs
-    LOG_RETENTION_DAYS: int = 30            # Delete uploaded logs older than N days
 
     # ── Logging ───────────────────────────────────────────────────
     LOG_LEVEL: str = "DEBUG"
