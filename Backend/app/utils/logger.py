@@ -75,19 +75,28 @@ def setup_logging() -> None:
     root = logging.getLogger()
     root.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.DEBUG))
 
-    # Console handler
+    # Console handler: Clean terminal by defaulting to INFO, allow override via CONSOLE_LOG_LEVEL
     console = logging.StreamHandler()
     console.setFormatter(_ConsoleFormatter())
-    console.setLevel(logging.DEBUG)
+    console_level = os.environ.get("CONSOLE_LOG_LEVEL", "INFO").upper()
+    console.setLevel(getattr(logging, console_level, logging.INFO))
     root.addHandler(console)
 
-    # Rotating file handler (JSON)
+    # Rotating file handler (JSON): Keeps all debug logs for backend analysis
     file_handler = logging.handlers.RotatingFileHandler(
         LOG_FILE, maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT, encoding="utf-8"
     )
     file_handler.setFormatter(_JSONFormatter())
     file_handler.setLevel(logging.DEBUG)
     root.addHandler(file_handler)
+
+    # Silence extremely noisy third-party loggers on the terminal
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn").setLevel(logging.INFO)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("websockets").setLevel(logging.WARNING)
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:

@@ -131,6 +131,18 @@ class CloudHttpClient:
 
         last_exc: Optional[Exception] = None
 
+        # Cleanly format request log
+        req_body = str(json) if json else "None"
+        if len(req_body) > 1000:
+            req_body = req_body[:1000] + "... (truncated)"
+        
+        req_params = str(params) if params else "None"
+        
+        logger.info(
+            "CloudHttpClient: [REQ] %s %s | Params: %s | Payload: %s",
+            method, path, req_params, req_body
+        )
+
         for attempt, delay in enumerate([0] + _RETRY_DELAYS):
             if delay > 0:
                 logger.warning(
@@ -143,14 +155,29 @@ class CloudHttpClient:
                 response = await self._client.request(
                     method, path, params=params, json=json
                 )
+                
+                # Cleanly format response log
+                res_body = response.text
+                if len(res_body) > 1000:
+                    res_body = res_body[:1000] + "... (truncated)"
+                
+                logger.info(
+                    "CloudHttpClient: [RES] %s %s -> Status: %d | Body: %s",
+                    method, path, response.status_code, res_body
+                )
+
                 response.raise_for_status()
                 return response.json()
 
             except httpx.HTTPStatusError as exc:
                 # 4xx errors are not transient — do not retry
+                err_body = exc.response.text
+                if len(err_body) > 1000:
+                    err_body = err_body[:1000] + "... (truncated)"
+                
                 logger.error(
-                    "CloudHttpClient: HTTP %d on %s %s",
-                    exc.response.status_code, method, path,
+                    "CloudHttpClient: HTTP %d on %s %s | Error Body: %s",
+                    exc.response.status_code, method, path, err_body,
                 )
                 raise
 
