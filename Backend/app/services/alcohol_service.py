@@ -44,11 +44,12 @@ class AlcoholService:
         stop()  → stops sensor thread, unsubscribes.
     """
 
-    def __init__(self, event_bus, command_bus, scan_log_svc, http_client):
+    def __init__(self, event_bus, command_bus, scan_log_svc, http_client, camera_svc):
         self._event_bus = event_bus
         self._command_bus = command_bus
         self._scan_log_svc = scan_log_svc
         self._http = http_client
+        self._camera_svc = camera_svc
         self._cmd_queue: Optional[asyncio.Queue] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -59,6 +60,10 @@ class AlcoholService:
         self._is_connected = False
         self._cmd_listener_task: Optional[asyncio.Task] = None
         self._active_employee_id: Optional[str] = None
+        
+        # Camera session state
+        self._current_session_image: Optional[str] = None
+        self._image_captured = False
 
     # ── Lifecycle ─────────────────────────────────────────────
 
@@ -135,6 +140,11 @@ class AlcoholService:
                 return
             self._is_active = True
 
+        # Reset camera session state and start camera early for warmup
+        self._current_session_image = None
+        self._image_captured = False
+        self._camera_svc.start()
+
         self._stop_event.clear()
         self._worker_thread = threading.Thread(
             target=self._measurement_worker,
@@ -154,6 +164,9 @@ class AlcoholService:
         if self._worker_thread and self._worker_thread.is_alive():
             self._worker_thread.join(timeout=3)
         self._worker_thread = None
+        
+        # Stop camera to release resources
+        self._camera_svc.stop()
         logger.info("AlcoholService: measurement stopped")
 
     def _reset_sensor(self) -> None:
@@ -331,6 +344,7 @@ class AlcoholService:
                         "success": True,
                         "value": val,
                         "status": status,
+                        "image_base64": self._current_session_image
                     })
 
                     # Try to upload result immediately, fallback to local DB on failure
@@ -340,7 +354,8 @@ class AlcoholService:
                                 employee_id=employee_id,
                                 scan_type="alcohol",
                                 result="pass" if status == "OK" else "fail",
-                                value=val
+                                value=val,
+                                image_base64=self._current_session_image
                             )
                             if not success:
                                 await self._scan_log_svc.log_alcohol(employee_id, val, status)
@@ -357,8 +372,20 @@ class AlcoholService:
                     push({"type": "alcohol_state", "state": "ready", "message": _STATUS_MSG["ready"]})
                 elif state == "$TRIGGER":
                     push({"type": "alcohol_state", "state": "breath_detected", "message": _STATUS_MSG["breath_detected"]})
+                    if not self._image_captured:
+                        self._image_captured = True
+                        def run_capture():
+                            logger.info("AlcoholService: triggering camera snapshot capture ($TRIGGER)")
+                            self._current_session_image = self._camera_svc.capture_image_base64()
+                        threading.Thread(target=run_capture, daemon=True, name="alcohol-camera-capture").start()
                 elif state == "$BREATH":
                     push({"type": "alcohol_state", "state": "sampling", "message": _STATUS_MSG["sampling"]})
+                    if not self._image_captured:
+                        self._image_captured = True
+                        def run_capture():
+                            logger.info("AlcoholService: triggering camera snapshot capture ($BREATH)")
+                            self._current_session_image = self._camera_svc.capture_image_base64()
+                        threading.Thread(target=run_capture, daemon=True, name="alcohol-camera-capture").start()
                 elif state == "$FLOW,ERR":
                     push({"type": "alcohol_state", "state": "flow_error", "message": _STATUS_MSG["flow_error"]})
                 elif state == "$END" and result_found:

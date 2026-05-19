@@ -94,6 +94,7 @@ class CloudHttpClient:
         result: str,
         value: Optional[float] = None,
         scanned_at: Optional[str] = None,
+        image_base64: Optional[str] = None,
     ) -> bool:
         """
         Helper to POST a scan result immediately.
@@ -109,6 +110,9 @@ class CloudHttpClient:
             "value": value,
             "scanned_at": scanned_at or datetime.now(timezone.utc).isoformat(),
         }
+        if image_base64:
+            payload["image"] = image_base64
+            payload["image_base64"] = image_base64
         
         try:
             path = f"/device/scans/{settings.CLOUD_ORG_ID}"

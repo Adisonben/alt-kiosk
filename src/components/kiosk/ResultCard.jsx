@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle2, XCircle, ArrowLeft, Image as ImageIcon } from 'lucide-react';
 
-const ResultCard = ({ isPass, value, countdown, onReset, isDevMode }) => {
+const ResultCard = ({ isPass, value, image, countdown, onReset, isDevMode }) => {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -20,12 +20,19 @@ const ResultCard = ({ isPass, value, countdown, onReset, isDevMode }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
         {/* Left Column: Image placeholder */}
         <div className="relative w-full aspect-square md:aspect-auto md:h-full bg-slate-100 rounded-[2.5rem] overflow-hidden border-4 border-slate-50 flex items-center justify-center shadow-inner">
-          <div className="flex flex-col items-center space-y-4 text-slate-400">
-            <ImageIcon size={64} className="text-slate-300" />
-            <span className="text-xl font-bold">ภาพถ่ายขณะเป่า</span>
-            <span className="text-sm font-medium">รอการเชื่อมต่อกล้อง...</span>
-          </div>
-          {/* <img src={imageSrc} alt="Blowing" className="absolute inset-0 w-full h-full object-cover z-10" /> */}
+          {image ? (
+            <img 
+              src={`data:image/jpeg;base64,${image}`} 
+              alt="Blowing capture" 
+              className="absolute inset-0 w-full h-full object-cover z-10 animate-fade-in" 
+            />
+          ) : (
+            <div className="flex flex-col items-center space-y-4 text-slate-400">
+              <ImageIcon size={64} className="text-slate-300" />
+              <span className="text-xl font-bold">ภาพถ่ายขณะเป่า</span>
+              <span className="text-sm font-medium">ไม่มีกล้องเชื่อมต่อหรือล้มเหลว</span>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Result Info */}

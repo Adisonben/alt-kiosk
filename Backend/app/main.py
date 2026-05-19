@@ -12,6 +12,7 @@ from app.core.command_bus import CommandBus
 from app.db.database import DatabaseManager
 from app.db.migrations import init_db
 from app.services.alcohol_service import AlcoholService
+from app.services.camera_service import CameraService
 from app.services.fingerprint_service import FingerprintService
 from app.services.employee_service import EmployeeService
 from app.services.sync_service import SyncService
@@ -47,8 +48,9 @@ async def lifespan(app: FastAPI):
     # Initialize hardware and sync services
     scan_log_svc = ScanLogService(db)
     http_client = CloudHttpClient()  # Shared client
+    camera_svc = CameraService()
 
-    alcohol_svc = AlcoholService(event_bus, command_bus, scan_log_svc, http_client)
+    alcohol_svc = AlcoholService(event_bus, command_bus, scan_log_svc, http_client, camera_svc)
     fingerprint_svc = FingerprintService(event_bus, command_bus)
     sync_svc = SyncService(db, employee_svc, http_client, event_bus, command_bus)
     identify_svc = IdentifyService(
@@ -69,6 +71,7 @@ async def lifespan(app: FastAPI):
     app.state.command_bus = command_bus
     app.state.alcohol_svc = alcohol_svc
     app.state.fingerprint_svc = fingerprint_svc
+    app.state.camera_svc = camera_svc
 
     # Start background services
     await http_client.start()

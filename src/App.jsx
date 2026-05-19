@@ -12,7 +12,7 @@ const isDevMode = import.meta.env.VITE_APP_MODE === 'dev';
 function App() {
   const [currentStep, setCurrentStep] = useState('home'); // home, id_entry, testing, result
   const [employee, setEmployee] = useState(null);
-  const [testResult, setTestResult] = useState(0);
+  const [testResult, setTestResult] = useState({ value: 0, image: null });
   const [devControls, setDevControls] = useState(null);
 
   const handleStart = () => {
@@ -24,14 +24,14 @@ function App() {
     setCurrentStep('testing');
   };
 
-  const handleTestComplete = (value) => {
-    setTestResult(value);
+  const handleTestComplete = (value, image = null) => {
+    setTestResult({ value, image });
     setCurrentStep('result');
   };
 
   const handleReset = () => {
     setEmployee(null);
-    setTestResult(0);
+    setTestResult({ value: 0, image: null });
     setCurrentStep('home');
   };
 
@@ -42,7 +42,7 @@ function App() {
       if (step === 'testing' && !employee) {
         setEmployee({ id: 1, name: 'สมชาย รักดี', emp_id: 'IDDE00001' });
       }
-      if (step === 'result' && testResult === 0) setTestResult(25); // Mock a pass result
+      if (step === 'result' && testResult.value === 0) setTestResult({ value: 25, image: null }); // Mock a pass result
     }
   };
 
@@ -66,7 +66,7 @@ function App() {
         )}
         
         {currentStep === 'result' && (
-          <Result value={testResult} onReset={handleReset} isDevMode={isDevMode} setDevControls={setDevControls} />
+          <Result value={testResult.value} image={testResult.image} onReset={handleReset} isDevMode={isDevMode} setDevControls={setDevControls} />
         )}
       </FullscreenLayout>
     </WebSocketProvider>

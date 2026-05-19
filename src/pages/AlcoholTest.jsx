@@ -53,7 +53,7 @@ const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
 
       const unsubResult = subscribe('alcohol_result', (data) => {
         if (data.success) {
-          onComplete(data.value);
+          onComplete(data.value, data.image_base64);
         } else {
           setStatus('error');
         }

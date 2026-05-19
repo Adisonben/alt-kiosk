@@ -24,6 +24,11 @@ nvm install 22
 node -v # Should print "v22.22.3".
 # Verify npm version:
 npm -v # Should print "10.9.8".
+
+#clone the repo
+git clone https://github.com/Adisonben/alt-kiosk.git
+#navigate to the folder
+cd alt-kiosk
 ```
 
 ---
@@ -160,4 +165,35 @@ pm2 start "npm run dev -- --host" --name alt-frontend
 # Save for reboot
 pm2 save
 pm2 startup
+```
+
+## Pi Camera Setup
+```bash
+sudo apt install -y rpicam-apps
+
+#Detect the Camera
+rpicam-hello --list-cameras
+#Capture a test image
+libcamera-still -o test.jpg
+#Run a Quick Preview
+rpicam-hello
+
+##Still Not Seeing It? Check the config.txt for rpicam
+#Open the file:
+sudo nano /boot/firmware/config.txt
+#For Official Pi Cameras Make sure auto-detect is on:
+camera_auto_detect=1
+
+##Depending on which port your cable is plugged into, add one of these blocks of text to the very bottom of the file:
+#If your camera is plugged into Port 0 (CAM/DISP 0):
+camera_auto_detect=1
+dtoverlay=rp1-cfe-csi0
+
+# If your camera is plugged into Port 1 (CAM/DISP 1):
+camera_auto_detect=1
+dtoverlay=rp1-cfe-csi1
+
+#Save and exit (`Ctrl+O`, `Enter`, then `Ctrl+X`).
+#Reboot your Pi:
+sudo reboot
 ```
