@@ -12,6 +12,8 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
   const [errorMessage, setErrorMessage] = useState('');
   const [scanStatusMsg, setScanStatusMsg] = useState('กำลังรอลงทะเบียนลายนิ้วมือ...');
   const [scanState, setScanState] = useState('waiting'); // waiting, scanning, processing, success, error
+  const [selectedFingerIndex, setSelectedFingerIndex] = useState(null);
+  const [activeRegisteredFingers, setActiveRegisteredFingers] = useState([]);
 
   const { sendCommand, subscribe } = useWebSocket();
 
@@ -28,9 +30,10 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
 
   const handleConfirmId = () => {
     if (!employeeIdInput) return;
-    
+
     setRegisterState('verifying_employee');
     setErrorMessage('');
+    setActiveRegisteredFingers([]);
 
     if (isDevMode) {
       // In dev mode, we wait a moment and show a mock employee or let developer choose via overlay
@@ -40,9 +43,10 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
           id: 'mock-uuid-999',
           name: 'สมชาย รักดี',
           emp_id: `IDDE${employeeIdInput.padStart(5, '0')}`,
-          has_fingerprints: false
+          has_fingerprints: true
         };
         setEmployee(mockEmployee);
+        setActiveRegisteredFingers([0]); // Default to finger 1 registered
         setRegisterState('employee_details');
       }, 1000);
     } else {
@@ -52,34 +56,26 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
   };
 
   // Trigger Scanner for enrollment
-  const handleStartScan = () => {
+  const handleStartScan = (fingerIndex) => {
+    setSelectedFingerIndex(fingerIndex);
     setRegisterState('scanning');
     setScanState('waiting');
     setScanStatusMsg('กรุณาวางนิ้วบนเครื่องสแกน...');
 
     if (!isDevMode) {
-      sendCommand('SCAN_FINGERPRINT', { employee_id: employee.id });
+      sendCommand('SCAN_FINGERPRINT', { employee_id: employee.id, finger_index: fingerIndex });
     }
   };
 
   // Simulate verification and enrollment in dev mode
-  const handleSimulateFoundNoFP = () => {
+  const handleSimulateFingers = (fingers) => {
     setEmployee({
       id: 'mock-uuid-new',
       name: 'วัชระ มีสุข',
       emp_id: `IDDE${employeeIdInput.padStart(5, '0') || '00002'}`,
-      has_fingerprints: false
+      has_fingerprints: fingers.length > 0
     });
-    setRegisterState('employee_details');
-  };
-
-  const handleSimulateFoundHasFP = () => {
-    setEmployee({
-      id: 'mock-uuid-old',
-      name: 'กิตติพงษ์ วงศ์ดี',
-      emp_id: `IDDE${employeeIdInput.padStart(5, '0') || '00001'}`,
-      has_fingerprints: true
-    });
+    setActiveRegisteredFingers(fingers);
     setRegisterState('employee_details');
   };
 
@@ -90,7 +86,7 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
 
   const handleSimulateScanSuccess = () => {
     setScanState('success');
-    setScanStatusMsg('สแกนลายนิ้วมือสำเร็จ! กำลังบันทึกข้อมูล...');
+    setScanStatusMsg(`สแกนลายนิ้วมือนิ้วที่ ${(selectedFingerIndex !== null ? selectedFingerIndex : 0) + 1} สำเร็จ! กำลังบันทึกข้อมูล...`);
     setTimeout(() => {
       setRegisterState('enroll_success');
       setTimeout(() => {
@@ -119,6 +115,7 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
           emp_id: data.employee?.emp_id,
           has_fingerprints: data.has_fingerprints
         });
+        setActiveRegisteredFingers(data.registered_fingers || []);
         setRegisterState('employee_details');
       } else {
         setErrorMessage(data.message || 'ไม่พบข้อมูลพนักงานในระบบ');
@@ -169,16 +166,28 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
           {registerState === 'verifying_employee' && (
             <>
               <button
-                onClick={handleSimulateFoundNoFP}
+                onClick={() => handleSimulateFingers([])}
                 className="px-3 py-1.5 bg-primary/20 text-primary-200 hover:bg-primary/40 hover:text-white rounded text-xs font-bold transition-colors cursor-pointer"
               >
                 จำลอง: พบพนักงาน (ยังไม่มีลายนิ้วมือ)
               </button>
               <button
-                onClick={handleSimulateFoundHasFP}
+                onClick={() => handleSimulateFingers([0])}
                 className="px-3 py-1.5 bg-primary/20 text-primary-200 hover:bg-primary/40 hover:text-white rounded text-xs font-bold transition-colors cursor-pointer"
               >
-                จำลอง: พบพนักงาน (มีลายนิ้วมือแล้ว)
+                จำลอง: พบพนักงาน (นิ้ว 1 ลงทะเบียนแล้ว)
+              </button>
+              <button
+                onClick={() => handleSimulateFingers([0, 1])}
+                className="px-3 py-1.5 bg-primary/20 text-primary-200 hover:bg-primary/40 hover:text-white rounded text-xs font-bold transition-colors cursor-pointer"
+              >
+                จำลอง: พบพนักงาน (นิ้ว 1, 2 ลงทะเบียนแล้ว)
+              </button>
+              <button
+                onClick={() => handleSimulateFingers([0, 1, 2])}
+                className="px-3 py-1.5 bg-primary/20 text-primary-200 hover:bg-primary/40 hover:text-white rounded text-xs font-bold transition-colors cursor-pointer"
+              >
+                จำลอง: พบพนักงาน (ลงทะเบียนครบ 3 นิ้ว)
               </button>
               <button
                 onClick={handleSimulateNotFound}
@@ -211,7 +220,7 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
     return () => {
       if (setDevControls) setDevControls(null);
     };
-  }, [isDevMode, registerState, employeeIdInput, setDevControls]);
+  }, [isDevMode, registerState, employeeIdInput, selectedFingerIndex, setDevControls]);
 
   // UI status color helper for scanner
   const getScannerUIParams = () => {
@@ -268,13 +277,7 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
         <div className="w-full flex justify-between items-center border-b border-slate-100 pb-6">
           <button
             onClick={() => {
-              if (registerState === 'input_id' || registerState === 'enroll_success' || registerState === 'enroll_error') {
-                onCancel();
-              } else {
-                setRegisterState('input_id');
-                setEmployee(null);
-                setEmployeeIdInput('');
-              }
+              onCancel();
             }}
             className="flex items-center text-slate-400 font-bold text-xl hover:text-primary transition-colors cursor-pointer"
           >
@@ -290,7 +293,7 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
 
         {/* Dynamic States */}
         <AnimatePresence mode="wait">
-          
+
           {/* STATE 1: Enter ID Keypad */}
           {registerState === 'input_id' && (
             <motion.div
@@ -354,7 +357,7 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
               className="w-full flex flex-col items-center space-y-8 py-4"
             >
               {/* Employee profile card */}
-              <div className="w-full max-w-md bg-slate-50 border border-slate-100 rounded-3xl p-8 flex flex-col items-center space-y-4 shadow-sm">
+              <div className="w-full max-w-md bg-slate-50 border border-slate-100 rounded-3xl p-4 flex flex-col items-center space-y-4 shadow-sm">
                 <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center text-primary">
                   <User size={40} />
                 </div>
@@ -364,44 +367,61 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
                 </div>
               </div>
 
-              {/* Case 3.1: Already has fingerprint */}
-              {employee.has_fingerprints ? (
-                <div className="w-full max-w-md flex flex-col items-center space-y-6">
-                  <div className="flex items-center space-x-3 bg-destructive/10 text-destructive px-6 py-4 rounded-2xl w-full border border-destructive/20 shadow-sm">
-                    <ShieldAlert size={40} className="flex-shrink-0" />
-                    <div>
-                      <h4 className="text-xl font-black leading-tight">พบข้อมูลลายนิ้วมือแล้ว</h4>
-                      <p className="text-lg font-bold text-slate-500 leading-tight">พนักงานท่านนี้ลงทะเบียนลายนิ้วมือในระบบเรียบร้อยแล้ว</p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={onCancel}
-                    className="kiosk-button w-full h-20 bg-slate-800 text-white text-2xl shadow-lg hover:bg-slate-900 cursor-pointer"
-                  >
-                    กลับสู่หน้าหลัก
-                  </button>
+              {/* 3-Box Fingerprint Selection Grid */}
+              <div className="w-full max-w-2xl flex flex-col items-center space-y-6">
+                <div className="text-center">
+                  <h4 className="text-2xl font-black text-slate-700">เลือกนิ้วมือที่ต้องการลงทะเบียน</h4>
+                  <p className="text-lg text-slate-400 font-bold">ลงทะเบียนลายนิ้วมือได้สูงสุด 3 ลายนิ้วมือ</p>
                 </div>
-              ) : (
-                /* Case 3.2: New fingerprint scan required */
-                <div className="w-full max-w-md flex flex-col items-center space-y-6">
-                  <div className="flex items-center space-x-3 bg-success/10 text-success px-6 py-4 rounded-2xl w-full border border-success/20 shadow-sm">
-                    <BadgeCheck size={40} className="flex-shrink-0" />
-                    <div>
-                      <h4 className="text-xl font-black leading-tight">สามารถลงทะเบียนได้</h4>
-                      <p className="text-lg font-bold text-slate-500 leading-tight">ไม่พบข้อมูลลายนิ้วมือพนักงานท่านนี้ในระบบ</p>
-                    </div>
-                  </div>
 
-                  <button
-                    onClick={handleStartScan}
-                    className="kiosk-button w-full h-24 bg-primary text-white text-3xl shadow-lg shadow-primary/20 hover:bg-primary/95 flex items-center justify-center cursor-pointer"
-                  >
-                    <Fingerprint className="mr-3" size={36} />
-                    เริ่มสแกนลายนิ้วมือ
-                  </button>
+                <div className="grid grid-cols-3 gap-4 w-full">
+                  {[0, 1, 2].map((idx) => {
+                    const isRegistered = activeRegisteredFingers.includes(idx);
+                    return (
+                      <motion.button
+                        key={idx}
+                        whileHover={!isRegistered ? { scale: 1.05, y: -4 } : {}}
+                        whileTap={!isRegistered ? { scale: 0.95 } : {}}
+                        onClick={() => {
+                          if (!isRegistered) {
+                            handleStartScan(idx);
+                          }
+                        }}
+                        disabled={isRegistered}
+                        className={`flex flex-col items-center justify-center p-2 rounded-3xl border-4 transition-all duration-300 min-h-[180px] ${isRegistered
+                          ? 'bg-success/10 border-success text-success shadow-md shadow-success/10'
+                          : 'bg-white border-dashed border-slate-300 text-slate-400 hover:border-primary hover:text-primary hover:shadow-lg hover:shadow-primary/5 cursor-pointer'
+                          }`}
+                      >
+                        {isRegistered ? (
+                          <>
+                            <div className="w-16 h-16 bg-success/20 rounded-full flex items-center justify-center text-success mb-4 animate-pulse">
+                              <Check size={36} />
+                            </div>
+                            <span className="text-2xl font-black">นิ้วที่ {idx + 1}</span>
+                            <span className="text-lg font-bold text-success/80 mt-1">ลงทะเบียนแล้ว</span>
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-4 transition-colors">
+                              <Fingerprint size={36} />
+                            </div>
+                            <span className="text-2xl font-black text-slate-700">นิ้วที่ {idx + 1}</span>
+                            <span className="text-lg font-bold text-slate-400 mt-1">ว่าง (สแกน)</span>
+                          </>
+                        )}
+                      </motion.button>
+                    );
+                  })}
                 </div>
-              )}
+
+                {/* <button
+                  onClick={onCancel}
+                  className="kiosk-button w-full h-12 bg-slate-800 text-white text-2xl shadow-lg hover:bg-slate-900 cursor-pointer mt-4"
+                >
+                  กลับสู่หน้าหลัก
+                </button> */}
+              </div>
             </motion.div>
           )}
 

@@ -118,6 +118,7 @@ class IdentifyService:
                         )
                 elif cmd_type == "SCAN_FINGERPRINT":
                     employee_id = cmd.get("params", {}).get("employee_id", "")
+                    finger_index = cmd.get("params", {}).get("finger_index", 0)
 
                     if self._workflow_lock.locked():
                         logger.warning(
@@ -127,7 +128,7 @@ class IdentifyService:
 
                     if employee_id:
                         asyncio.create_task(
-                            self._enroll_workflow(employee_id, session_id),
+                            self._enroll_workflow(employee_id, session_id, finger_index),
                             name=f"enroll-{employee_id}",
                         )
                     else:
@@ -254,6 +255,7 @@ class IdentifyService:
                     "emp_id": employee.emp_id,
                 },
                 "has_fingerprints": len(employee.fingerprints) > 0,
+                "registered_fingers": [fp.finger_index for fp in employee.fingerprints if fp.finger_index is not None],
             })
 
             # (Merged logging: we now only log once at the end of the workflow)
@@ -329,7 +331,7 @@ class IdentifyService:
     # ── Enrollment workflow ───────────────────────────────────────
 
     async def _enroll_workflow(
-        self, employee_id: str, session_id: Optional[str]
+        self, employee_id: str, session_id: Optional[str], finger_index: int = 0
     ) -> None:
         """
         Enrollment workflow: captures fingerprint, saves it locally, and uploads to cloud.
@@ -340,7 +342,11 @@ class IdentifyService:
                     event["session_id"] = session_id
                 asyncio.create_task(self._event_bus.publish(event))
 
-            logger.info("IdentifyService: starting fingerprint enrollment for employee_id='%s'", employee_id)
+            logger.info(
+                "IdentifyService: starting fingerprint enrollment for employee_id='%s', finger_index=%d",
+                employee_id,
+                finger_index,
+            )
 
             # 1. Fetch employee from local SQLite using primary key (id)
             employee = await self._employee_svc.get_by_id(employee_id)
@@ -379,7 +385,7 @@ class IdentifyService:
                 await self._employee_svc.save_fingerprint(
                     employee_id=employee.id,
                     fingerprint_code=fingerprint_code,
-                    finger_index=0
+                    finger_index=finger_index
                 )
             except Exception as exc:
                 logger.exception("IdentifyService: failed to save fingerprint locally — %s", exc)
@@ -394,7 +400,7 @@ class IdentifyService:
             try:
                 payload = {
                     "employee_id": employee.id,
-                    "finger_index": 0,
+                    "finger_index": finger_index,
                     "fingerprint_code": fingerprint_code,
                 }
                 
@@ -402,8 +408,9 @@ class IdentifyService:
                 await self._http.post("/device/employee/fingerprint", json=payload)
                 
                 logger.info(
-                    "IdentifyService: successfully uploaded fingerprint for %s to cloud",
+                    "IdentifyService: successfully uploaded fingerprint for %s (finger %d) to cloud",
                     employee.full_name,
+                    finger_index,
                 )
             except Exception as exc:
                 logger.exception("IdentifyService: failed to upload fingerprint to cloud — %s", exc)
@@ -418,6 +425,10 @@ class IdentifyService:
             push({
                 "type": "enroll_result",
                 "success": True,
-                "message": "ลงทะเบียนลายนิ้วมือสำเร็จ",
+                "message": f"ลงทะเบียนลายนิ้วมือนิ้วที่ {finger_index + 1} สำเร็จ",
             })
-            logger.info("IdentifyService: successfully completed enrollment workflow for %s", employee.full_name)
+            logger.info(
+                "IdentifyService: successfully completed enrollment workflow for %s (finger %d)",
+                employee.full_name,
+                finger_index,
+            )

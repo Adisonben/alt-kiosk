@@ -218,10 +218,10 @@ class EmployeeService:
                 (now, employee_id),
             )
 
-            # Remove any existing fingerprints for this employee to prevent duplicates
+            # Remove any existing fingerprints for this employee and index to prevent duplicates
             await conn.execute(
-                "DELETE FROM fingerprints WHERE employee_id = ?",
-                (employee_id,),
+                "DELETE FROM fingerprints WHERE employee_id = ? AND finger_index = ?",
+                (employee_id, finger_index),
             )
 
             # Insert the new fingerprint template
