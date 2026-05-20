@@ -96,9 +96,10 @@ class IdentifyService:
 
                 if cmd_type == "IDENTIFY":
                     employee_id = cmd.get("params", {}).get("employee_id", "")
+                    lookup_only = cmd.get("params", {}).get("lookup_only", False)
 
-                    # Debounce duplicate concurrent commands
-                    if self._workflow_lock.locked():
+                    # Debounce duplicate concurrent commands (only for standard identify, lookup_only is non-blocking)
+                    if not lookup_only and self._workflow_lock.locked():
                         logger.warning(
                             "IdentifyService: workflow is already running. Ignoring concurrent IDENTIFY command"
                         )
@@ -108,7 +109,7 @@ class IdentifyService:
                     # stays free to accept new commands immediately.
                     if employee_id:
                         asyncio.create_task(
-                            self._identify_workflow(employee_id, session_id),
+                            self._identify_workflow(employee_id, session_id, lookup_only=lookup_only),
                             name=f"identify-{employee_id}",
                         )
                     else:
@@ -214,12 +215,46 @@ class IdentifyService:
     # ── Identification workflow ───────────────────────────────────
 
     async def _identify_workflow(
-        self, employee_id: str, session_id: Optional[str]
+        self, employee_id: str, session_id: Optional[str], lookup_only: bool = False
     ) -> None:
         """
         Full identification flow for a single request.
         All events include session_id if provided.
         """
+        if lookup_only:
+            def push(event: dict) -> None:
+                if session_id:
+                    event["session_id"] = session_id
+                asyncio.create_task(self._event_bus.publish(event))
+
+            logger.info("IdentifyService: identifying emp_id='%s' (lookup_only)", employee_id)
+
+            formatted_id = f"{settings.CLOUD_ORG_CODE}E{employee_id}"
+            logger.debug("IdentifyService: formatted lookup ID (lookup_only): '%s'", formatted_id)
+
+            employee = await self._employee_svc.get_by_emp_id(formatted_id)
+            if not employee:
+                logger.warning("IdentifyService: emp_id '%s' not found in local DB (lookup_only)", employee_id)
+                push({
+                    "type": "identify_result",
+                    "success": False,
+                    "message": "ไม่พบข้อมูลพนักงาน",
+                })
+                return
+
+            push({
+                "type": "identify_result",
+                "success": True,
+                "employee": {
+                    "id": employee.id,
+                    "name": employee.full_name,
+                    "emp_id": employee.emp_id,
+                },
+                "has_fingerprints": len(employee.fingerprints) > 0,
+                "registered_fingers": [fp.finger_index for fp in employee.fingerprints if fp.finger_index is not None],
+            })
+            return
+
         async with self._workflow_lock:
             def push(event: dict) -> None:
                 if session_id:

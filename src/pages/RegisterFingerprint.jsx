@@ -50,8 +50,8 @@ const RegisterFingerprint = ({ currentStep, setCurrentStep, onCancel, isDevMode,
         setRegisterState('employee_details');
       }, 1000);
     } else {
-      // Send IDENTIFY command with typed employee sequence ID (e.g. "00001")
-      sendCommand('IDENTIFY', { employee_id: employeeIdInput });
+      // Send IDENTIFY command with typed employee sequence ID (e.g. "00001") and lookup_only set to true
+      sendCommand('IDENTIFY', { employee_id: employeeIdInput, lookup_only: true });
     }
   };
 
