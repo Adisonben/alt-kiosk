@@ -1,8 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Play, Fingerprint } from 'lucide-react';
+import { Play, Fingerprint, UserX } from 'lucide-react';
 
-const Home = ({ onStart, onRegister }) => {
+const Home = ({ onStart, onRegister, onAnonymous }) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -35,15 +35,27 @@ const Home = ({ onStart, onRegister }) => {
           เริ่มใช้งาน
         </motion.button>
 
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={onRegister}
-          className="kiosk-button w-full h-24 bg-slate-100 text-slate-700 text-3xl border-2 border-slate-200 shadow-md hover:bg-slate-200"
-        >
-          <Fingerprint className="mr-4 text-primary" size={32} />
-          ลงทะเบียนลายนิ้วมือ
-        </motion.button>
+        <div className="grid grid-cols-2 gap-4">
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onAnonymous}
+            className="kiosk-button w-full h-24 bg-white text-slate-700 text-2xl border-2 border-slate-200 shadow-md hover:bg-slate-50 flex items-center justify-center cursor-pointer"
+          >
+            <UserX className="mr-3 text-amber-500" size={28} />
+            ตรวจทั่วไป
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onRegister}
+            className="kiosk-button w-full h-24 bg-slate-100 text-slate-700 text-2xl border-2 border-slate-200 shadow-md hover:bg-slate-200 flex items-center justify-center cursor-pointer"
+          >
+            <Fingerprint className="mr-3 text-primary" size={28} />
+            ลงทะเบียน
+          </motion.button>
+        </div>
         
         <p className="pt-4 text-slate-400 text-xl">
           กรุณาเตรียมรหัสพนักงาน

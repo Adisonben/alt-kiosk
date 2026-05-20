@@ -17,6 +17,7 @@ from app.services.fingerprint_service import FingerprintService
 from app.services.employee_service import EmployeeService
 from app.services.sync_service import SyncService
 from app.services.scan_log_service import ScanLogService
+from app.services.anonymous_test_service import AnonymousTestService
 from app.services.identify_service import IdentifyService
 from app.services.log_uploader_service import LogUploaderService
 from app.services.device_service import DeviceService
@@ -47,16 +48,17 @@ async def lifespan(app: FastAPI):
 
     # Initialize hardware and sync services
     scan_log_svc = ScanLogService(db)
+    anonymous_test_svc = AnonymousTestService(db)
     http_client = CloudHttpClient()  # Shared client
     camera_svc = CameraService()
 
-    alcohol_svc = AlcoholService(event_bus, command_bus, scan_log_svc, http_client, camera_svc)
+    alcohol_svc = AlcoholService(event_bus, command_bus, scan_log_svc, http_client, camera_svc, anonymous_test_svc)
     fingerprint_svc = FingerprintService(event_bus, command_bus)
     sync_svc = SyncService(db, employee_svc, http_client, event_bus, command_bus)
     identify_svc = IdentifyService(
         employee_svc, fingerprint_svc, scan_log_svc, http_client, event_bus, command_bus, alcohol_svc
     )
-    log_uploader_svc = LogUploaderService(scan_log_svc, http_client)
+    log_uploader_svc = LogUploaderService(scan_log_svc, http_client, anonymous_test_svc)
     device_svc = DeviceService(http_client)
 
     # Store in app.state for access by routers and services
@@ -64,6 +66,7 @@ async def lifespan(app: FastAPI):
     app.state.employee_svc = employee_svc
     app.state.sync_svc = sync_svc
     app.state.scan_log_svc = scan_log_svc
+    app.state.anonymous_test_svc = anonymous_test_svc
     app.state.identify_svc = identify_svc
     app.state.log_uploader_svc = log_uploader_svc
     app.state.device_svc = device_svc

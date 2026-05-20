@@ -28,7 +28,10 @@ const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
   // Send START command on mount
   useEffect(() => {
     if (!isDevMode && employee) {
-      sendCommand('START_TEST', { employee_id: employee.id });
+      sendCommand('START_TEST', { 
+        employee_id: employee.id, 
+        is_anonymous: employee.isAnonymous || false 
+      });
     }
   }, [isDevMode, sendCommand, employee]);
 
@@ -133,7 +136,10 @@ const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
   const handleRetry = () => {
     setStatus('preparing');
     if (!isDevMode) {
-      sendCommand('START_TEST', { employee_id: employee?.id });
+      sendCommand('START_TEST', { 
+        employee_id: employee?.id,
+        is_anonymous: employee?.isAnonymous || false 
+      });
     }
   };
 
@@ -187,7 +193,7 @@ const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
         </div>
 
         {/* Right Column: Blow Status */}
-        <div className="kiosk-card p- flex flex-col items-center space-y-10 bg-slate-50/50 border-2 border-white">
+        <div className="kiosk-card p-4 flex flex-col items-center space-y-10 bg-slate-50/50 border-2 border-white">
           <div className="text-center space-y-2">
             <h2 className={`text-4xl font-black ${statusDisplay.color}`}>
               {statusDisplay.text}

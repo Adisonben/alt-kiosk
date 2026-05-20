@@ -60,10 +60,23 @@ CREATE TABLE IF NOT EXISTS scan_logs (
     retry_count  INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS anonymous_tests (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id       TEXT NOT NULL,
+    value        REAL,
+    result       TEXT NOT NULL,
+    scanned_at   TEXT NOT NULL,
+    image        TEXT,
+    uploaded     INTEGER NOT NULL DEFAULT 0,
+    upload_error TEXT,
+    retry_count  INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_employees_emp_id ON employees(emp_id);
 CREATE INDEX IF NOT EXISTS idx_employees_org_id ON employees(org_id);
 CREATE INDEX IF NOT EXISTS idx_fingerprints_employee_id ON fingerprints(employee_id);
 CREATE INDEX IF NOT EXISTS idx_scan_logs_uploaded ON scan_logs(uploaded);
+CREATE INDEX IF NOT EXISTS idx_anonymous_tests_uploaded ON anonymous_tests(uploaded);
 """
 
 

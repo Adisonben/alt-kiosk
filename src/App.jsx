@@ -30,6 +30,16 @@ function App() {
     setCurrentStep('result');
   };
 
+  const handleStartAnonymous = () => {
+    setEmployee({
+      id: 'ANONYMOUS',
+      name: 'ตรวจทั่วไป (ไม่ระบุตัวตน)',
+      emp_id: 'ไม่ระบุตัวตน',
+      isAnonymous: true
+    });
+    setCurrentStep('testing');
+  };
+
   const handleReset = () => {
     setEmployee(null);
     setTestResult({ value: 0, image: null });
@@ -58,6 +68,7 @@ function App() {
           <Home 
             onStart={handleStart} 
             onRegister={() => setCurrentStep('register_input_id')}
+            onAnonymous={handleStartAnonymous}
             isDevMode={isDevMode} 
             setDevControls={setDevControls} 
           />

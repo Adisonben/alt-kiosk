@@ -123,6 +123,39 @@ class CloudHttpClient:
             logger.warning("CloudHttpClient: failed to post %s result — %s", scan_type, exc)
             return False
 
+    async def post_anonymous_scan_result(
+        self,
+        scan_type: str,
+        result: str,
+        value: Optional[float] = None,
+        scanned_at: Optional[str] = None,
+        image_base64: Optional[str] = None,
+    ) -> bool:
+        """
+        Helper to POST an anonymous scan result immediately.
+        Returns True if successful, False if it failed due to network/transient error.
+        """
+        from datetime import datetime, timezone
+        
+        payload = {
+            "device_id": settings.CLOUD_DEVICE_ID,
+            "scan_type": scan_type,
+            "result": result,
+            "value": value,
+            "scanned_at": scanned_at or datetime.now(timezone.utc).isoformat(),
+        }
+        if image_base64:
+            payload["image"] = image_base64
+        
+        try:
+            path = f"/device/scans/anonymous/{settings.CLOUD_ORG_ID}"
+            await self.post(path, json=payload)
+            logger.info("CloudHttpClient: successfully posted anonymous %s result", scan_type)
+            return True
+        except Exception as exc:
+            logger.warning("CloudHttpClient: failed to post anonymous %s result — %s", scan_type, exc)
+            return False
+
     async def _request_with_retry(
         self,
         method: str,

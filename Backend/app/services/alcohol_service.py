@@ -44,10 +44,11 @@ class AlcoholService:
         stop()  → stops sensor thread, unsubscribes.
     """
 
-    def __init__(self, event_bus, command_bus, scan_log_svc, http_client, camera_svc):
+    def __init__(self, event_bus, command_bus, scan_log_svc, http_client, camera_svc, anonymous_test_svc=None):
         self._event_bus = event_bus
         self._command_bus = command_bus
         self._scan_log_svc = scan_log_svc
+        self._anonymous_test_svc = anonymous_test_svc
         self._http = http_client
         self._camera_svc = camera_svc
         self._cmd_queue: Optional[asyncio.Queue] = None
@@ -117,9 +118,10 @@ class AlcoholService:
 
                 if cmd_type == "START_ALCOHOL":
                     employee_id = cmd.get("params", {}).get("employee_id")
+                    is_anonymous = cmd.get("params", {}).get("is_anonymous", False)
                     if not employee_id:
-                        employee_id = self._active_employee_id
-                    self._start_measurement(session_id, employee_id)
+                         employee_id = self._active_employee_id
+                    self._start_measurement(session_id, employee_id, is_anonymous)
                 elif cmd_type in ("STOP_ALCOHOL", "RESET"):
                     self._stop_measurement()
                     self._active_employee_id = None
@@ -131,7 +133,7 @@ class AlcoholService:
     # ── Measurement control ───────────────────────────────────
 
     def _start_measurement(
-        self, session_id: Optional[str] = None, employee_id: Optional[str] = None
+        self, session_id: Optional[str] = None, employee_id: Optional[str] = None, is_anonymous: bool = False
     ) -> None:
         """Spawn the sensor worker thread."""
         with self._state_lock:
@@ -148,7 +150,7 @@ class AlcoholService:
         self._stop_event.clear()
         self._worker_thread = threading.Thread(
             target=self._measurement_worker,
-            args=(session_id, employee_id),
+            args=(session_id, employee_id, is_anonymous),
             daemon=True,
             name="alcohol-sensor",
         )
@@ -249,7 +251,7 @@ class AlcoholService:
     # ── Sensor worker thread ──────────────────────────────────
 
     def _measurement_worker(
-        self, session_id: Optional[str], employee_id: Optional[str]
+        self, session_id: Optional[str], employee_id: Optional[str], is_anonymous: bool = False
     ) -> None:
         """
         Blocking thread: open serial, send commands, read sensor data,
@@ -340,15 +342,32 @@ class AlcoholService:
                     status = result["status"]
 
                     push({
-                        "type": "alcohol_result",
-                        "success": True,
-                        "value": val,
-                        "status": status,
-                        "image_base64": self._current_session_image
+                         "type": "alcohol_result",
+                         "success": True,
+                         "value": val,
+                         "status": status,
+                         "image_base64": self._current_session_image
                     })
 
                     # Try to upload result immediately, fallback to local DB on failure
-                    if employee_id:
+                    if is_anonymous:
+                        async def upload_anonymous_or_log():
+                             success = await self._http.post_anonymous_scan_result(
+                                 scan_type="alcohol",
+                                 result="pass" if status == "OK" else "fail",
+                                 value=val,
+                                 image_base64=self._current_session_image
+                             )
+                             if not success:
+                                 from app.config import settings
+                                 await self._anonymous_test_svc.log_anonymous_test(
+                                     org_id=settings.CLOUD_ORG_ID,
+                                     value=val,
+                                     status=status,
+                                     image=self._current_session_image
+                                 )
+                        asyncio.run_coroutine_threadsafe(upload_anonymous_or_log(), self._loop)
+                    elif employee_id:
                         async def upload_or_log():
                             success = await self._http.post_scan_result(
                                 employee_id=employee_id,
