@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import FullscreenLayout from './layouts/FullscreenLayout';
 import Home from './pages/Home';
-import EnterID from './pages/EnterID';
+import ScanFingerprint from './pages/ScanFingerprint';
 import AlcoholTest from './pages/AlcoholTest';
 import Result from './pages/Result';
 import DevOverlay from './components/kiosk/DevOverlay';
@@ -10,16 +10,16 @@ import { WebSocketProvider } from './context/WebSocketContext';
 const isDevMode = import.meta.env.VITE_APP_MODE === 'dev';
 
 function App() {
-  const [currentStep, setCurrentStep] = useState('home'); // home, id_entry, testing, result
+  const [currentStep, setCurrentStep] = useState('home'); // home, fingerprint_scan, testing, result
   const [employee, setEmployee] = useState(null);
   const [testResult, setTestResult] = useState({ value: 0, image: null });
   const [devControls, setDevControls] = useState(null);
 
   const handleStart = () => {
-    setCurrentStep('id_entry');
+    setCurrentStep('fingerprint_scan');
   };
 
-  const handleConfirmID = (empData) => {
+  const handleConfirmEmployee = (empData) => {
     setEmployee(empData);
     setCurrentStep('testing');
   };
@@ -57,8 +57,8 @@ function App() {
           <Home onStart={handleStart} isDevMode={isDevMode} setDevControls={setDevControls} />
         )}
         
-        {currentStep === 'id_entry' && (
-          <EnterID onConfirm={handleConfirmID} onCancel={handleReset} isDevMode={isDevMode} setDevControls={setDevControls} />
+        {currentStep === 'fingerprint_scan' && (
+          <ScanFingerprint onConfirm={handleConfirmEmployee} onCancel={handleReset} isDevMode={isDevMode} setDevControls={setDevControls} />
         )}
         
         {currentStep === 'testing' && (

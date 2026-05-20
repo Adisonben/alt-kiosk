@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Wind, RefreshCcw, CheckCircle2, Circle } from 'lucide-react';
+import { Wind, RefreshCcw, CheckCircle2, Circle, User } from 'lucide-react';
 import StatusCircle from '../components/kiosk/StatusCircle';
 import ProgressIndicator from '../components/kiosk/ProgressIndicator';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -145,8 +145,20 @@ const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
       exit={{ opacity: 0, y: -20 }}
       className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center"
     >
-      {/* Left Column: Instructions */}
+      {/* Left Column: Instructions & Employee Profile */}
       <div className="space-y-8">
+        {/* Identified Employee Info Card */}
+        <div className="w-full bg-white rounded-[2.5rem] p-6 flex items-center space-x-6 shadow-sm border border-slate-100 animate-fadeIn">
+          <div className="w-20 h-20 bg-primary/5 rounded-2xl flex items-center justify-center text-primary border border-primary/10">
+            <User size={48} />
+          </div>
+          <div className="flex-1 space-y-1">
+            <span className="text-sm font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">ผู้ตรวจวัด / Tester</span>
+            <h3 className="text-3xl font-black text-slate-800">{employee?.name}</h3>
+            <p className="text-lg text-slate-400 font-mono font-bold">รหัสพนักงาน: {employee?.emp_id}</p>
+          </div>
+        </div>
+
         <div className="space-y-2">
           <h2 className="text-4xl font-black text-slate-800">คำแนะนำการใช้งาน</h2>
           <p className="text-xl text-slate-500 font-medium">กรุณาปฏิบัติตามขั้นตอนด้านล่าง</p>

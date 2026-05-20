@@ -95,26 +95,102 @@ class IdentifyService:
                     employee_id = cmd.get("params", {}).get("employee_id", "")
                     session_id = cmd.get("session_id")
 
-                    if not employee_id:
-                        logger.warning("IdentifyService: IDENTIFY command missing employee_id")
-                        continue
-
                     # Debounce duplicate concurrent IDENTIFY commands
                     if self._workflow_lock.locked():
                         logger.warning(
-                            "IdentifyService: workflow is already running. Ignoring concurrent IDENTIFY command for employee_id '%s'",
-                            employee_id
+                            "IdentifyService: workflow is already running. Ignoring concurrent IDENTIFY command"
                         )
                         continue
 
                     # Run each identification in its own task so the listener
                     # stays free to accept new commands immediately.
-                    asyncio.create_task(
-                        self._identify_workflow(employee_id, session_id),
-                        name=f"identify-{employee_id}",
-                    )
+                    if employee_id:
+                        asyncio.create_task(
+                            self._identify_workflow(employee_id, session_id),
+                            name=f"identify-{employee_id}",
+                        )
+                    else:
+                        asyncio.create_task(
+                            self._identify_all_workflow(session_id),
+                            name="identify-all",
+                        )
         except asyncio.CancelledError:
             pass
+
+    async def _identify_all_workflow(self, session_id: Optional[str]) -> None:
+        """1-to-N Identification Workflow for rapid fingerprint logins."""
+        async with self._workflow_lock:
+            def push(event: dict) -> None:
+                if session_id:
+                    event["session_id"] = session_id
+                asyncio.create_task(self._event_bus.publish(event))
+
+            logger.info("IdentifyService: starting 1-to-N identification flow")
+
+            # 1. Fetch all enrolled fingerprints
+            all_fps = await self._employee_svc.get_all_fingerprints()
+            if not all_fps:
+                logger.warning("IdentifyService: no fingerprints enrolled in database")
+                push({
+                    "type": "verify_result",
+                    "success": False,
+                    "match": False,
+                    "message": "ไม่มีข้อมูลลายนิ้วมือในระบบ",
+                })
+                return
+
+            # 2. Run scan & identify
+            try:
+                matched_emp_id = await self._fingerprint_svc.scan_and_identify(all_fps, session_id)
+            except Exception as exc:
+                logger.exception("IdentifyService: error during 1-to-N identify — %s", exc)
+                push({
+                    "type": "verify_result",
+                    "success": False,
+                    "match": False,
+                    "message": "เกิดข้อผิดพลาดกับอุปกรณ์สแกนลายนิ้วมือ",
+                })
+                return
+
+            # 3. Handle matching outcome
+            if matched_emp_id:
+                employee = await self._employee_svc.get_by_id(matched_emp_id)
+                if employee:
+                    self._alcohol_svc.set_active_employee_id(employee.id)
+                    
+                    push({
+                        "type": "verify_result",
+                        "success": True,
+                        "match": True,
+                        "employee": {
+                            "id": employee.id,
+                            "name": employee.full_name,
+                            "emp_id": employee.emp_id,
+                        },
+                    })
+                    logger.info("IdentifyService: 1-to-N Match Found -> %s (%s)", employee.full_name, employee.emp_id)
+                    
+                    # Log fingerprint match
+                    asyncio.create_task(
+                        self._scan_log_svc.log_fingerprint(employee.id, "match"),
+                        name=f"log-fp-{employee.id}",
+                    )
+                    return
+
+            # If unmatched
+            push({
+                "type": "verify_result",
+                "success": True,
+                "match": False,
+                "message": "ไม่พบลายนิ้วมือที่ตรงกัน",
+            })
+            logger.info("IdentifyService: 1-to-N Identification - NO MATCH")
+
+            # Log failed attempt locally against "UNKNOWN"
+            asyncio.create_task(
+                self._scan_log_svc.log_fingerprint("UNKNOWN", "no_match"),
+                name="log-fp-unknown",
+            )
 
     # ── Identification workflow ───────────────────────────────────
 

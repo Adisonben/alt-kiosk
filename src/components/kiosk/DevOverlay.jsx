@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-const steps = ['home', 'id_entry', 'testing', 'result'];
+const steps = ['home', 'fingerprint_scan', 'testing', 'result'];
 
 const DevOverlay = ({ currentStep, onNavigate, extraControls }) => {
   const currentIndex = steps.indexOf(currentStep);

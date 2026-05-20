@@ -89,6 +89,26 @@ class EmployeeService:
             row = await cursor.fetchone()
             return row[0] if row else 0
 
+    async def get_all_fingerprints(self) -> list[Fingerprint]:
+        """Fetch all fingerprint templates enrolled in the system."""
+        async with self._db.connection() as conn:
+            cursor = await conn.execute(
+                "SELECT id, employee_id, finger_index, fingerprint_code, updated_at, synced_at "
+                "FROM fingerprints"
+            )
+            rows = await cursor.fetchall()
+            return [
+                Fingerprint(
+                    id=row["id"],
+                    employee_id=row["employee_id"],
+                    finger_index=row["finger_index"],
+                    fingerprint_code=row["fingerprint_code"],
+                    updated_at=row["updated_at"],
+                    synced_at=row["synced_at"],
+                )
+                for row in rows
+            ]
+
     # ── Write ────────────────────────────────────────────────────
 
     async def upsert(self, employee_data: dict) -> None:

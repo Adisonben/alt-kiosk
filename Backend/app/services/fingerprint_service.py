@@ -74,6 +74,87 @@ class FingerprintService:
         """
         return await self._verify_workflow(target_templates, session_id)
 
+    async def scan_and_identify(
+        self, all_fingerprints: list, session_id: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Runs the fingerprint scan and compares the scanned template against
+        all registered templates. Returns the matched employee_id or None.
+        """
+        def push(event: dict):
+            if session_id:
+                event["session_id"] = session_id
+            asyncio.create_task(self._event_bus.publish(event))
+
+        # 1. State: Scanning
+        push({"type": "fingerprint_state", "state": "scanning", "message": _STATUS_MSG["scanning"]})
+
+        # 2. Capture Fingerprint
+        scan_result = await self._loop.run_in_executor(None, self._run_scan)
+        if not scan_result["success"]:
+            logger.warning("Fingerprint scan failed: %s", scan_result.get("reason"))
+            push({
+                "type": "fingerprint_result",
+                "success": False,
+                "match": False,
+                "message": f"Scan failed: {scan_result.get('reason')}"
+            })
+            return None
+
+        # 3. State: Processing
+        push({"type": "fingerprint_state", "state": "processing", "message": _STATUS_MSG["processing"]})
+
+        scanned_base64 = scan_result["data"]
+        scanned_raw = base64_to_raw(scanned_base64)
+        if len(scanned_raw) != TEMPLATE_SIZE:
+            push({
+                "type": "fingerprint_result",
+                "success": False,
+                "match": False,
+                "message": "Invalid scanned template size"
+            })
+            return None
+
+        # 4. Compare sequentially against templates
+        match_employee_id = None
+        error_msg = ""
+
+        if not all_fingerprints:
+            error_msg = "No registered fingerprints"
+        else:
+            for fp in all_fingerprints:
+                target_raw = base64_to_raw(fp.fingerprint_code)
+                if len(target_raw) != TEMPLATE_SIZE:
+                    continue
+
+                compare_result = await self._loop.run_in_executor(
+                    None, self._run_compare, scanned_raw, target_raw
+                )
+                if compare_result.get("match"):
+                    match_employee_id = fp.employee_id
+                    break
+
+                if not compare_result.get("match") and "Error" in compare_result.get("message", ""):
+                    error_msg = compare_result.get("message")
+
+        # 5. Publish Final Result
+        if match_employee_id:
+            push({
+                "type": "fingerprint_result",
+                "success": True,
+                "match": True,
+                "message": "Match successful"
+            })
+        else:
+            push({
+                "type": "fingerprint_result",
+                "success": True,
+                "match": False,
+                "message": error_msg or "No match found"
+            })
+
+        return match_employee_id
+
     async def _listen_commands(self) -> None:
         """Async loop: wait for commands from the CommandBus."""
         try:
