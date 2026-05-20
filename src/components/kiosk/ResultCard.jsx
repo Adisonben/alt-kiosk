@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, XCircle, ArrowLeft, Image as ImageIcon } from 'lucide-react';
+import { CheckCircle2, XCircle, ArrowLeft, Image as ImageIcon, QrCode, Printer } from 'lucide-react';
 
 const ResultCard = ({ isPass, value, image, countdown, onReset, isDevMode }) => {
   return (
@@ -8,9 +8,8 @@ const ResultCard = ({ isPass, value, image, countdown, onReset, isDevMode }) => 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 1.05 }}
-      className={`w-full max-w-5xl kiosk-card p-12 flex flex-col space-y-10 border-t-[16px] ${
-        isPass ? 'border-t-success' : 'border-t-destructive'
-      }`}
+      className={`w-full max-w-5xl kiosk-card p-12 flex flex-col space-y-10 border-t-[16px] ${isPass ? 'border-t-success' : 'border-t-destructive'
+        }`}
     >
       <div className="text-center">
         <h2 className="text-4xl font-bold text-slate-800">ผลการทดสอบแอลกอฮอล์</h2>
@@ -18,21 +17,43 @@ const ResultCard = ({ isPass, value, image, countdown, onReset, isDevMode }) => 
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-        {/* Left Column: Image placeholder */}
-        <div className="relative w-full aspect-square md:aspect-auto md:h-full bg-slate-100 rounded-[2.5rem] overflow-hidden border-4 border-slate-50 flex items-center justify-center shadow-inner">
-          {image ? (
-            <img 
-              src={`data:image/jpeg;base64,${image}`} 
-              alt="Blowing capture" 
-              className="absolute inset-0 w-full h-full object-cover z-10 animate-fade-in" 
-            />
-          ) : (
-            <div className="flex flex-col items-center space-y-4 text-slate-400">
-              <ImageIcon size={64} className="text-slate-300" />
-              <span className="text-xl font-bold">ภาพถ่ายขณะเป่า</span>
-              <span className="text-sm font-medium">ไม่มีกล้องเชื่อมต่อหรือล้มเหลว</span>
-            </div>
-          )}
+        {/* Left Column: Image placeholder with receipt actions */}
+        <div className="flex flex-col justify-between space-y-6">
+          <div className="relative w-full aspect-square md:flex-1 min-h-[300px] bg-slate-100 rounded-[2.5rem] overflow-hidden border-4 border-slate-50 flex items-center justify-center shadow-inner">
+            {image ? (
+              <img
+                src={`data:image/jpeg;base64,${image}`}
+                alt="Blowing capture"
+                className="absolute inset-0 w-full h-full object-cover z-10 animate-fade-in"
+              />
+            ) : (
+              <div className="flex flex-col items-center space-y-4 text-slate-400">
+                <ImageIcon size={64} className="text-slate-300" />
+                <span className="text-xl font-bold">ภาพถ่ายขณะเป่า</span>
+                <span className="text-sm font-medium">ไม่มีกล้องเชื่อมต่อหรือล้มเหลว</span>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-6">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => alert('E-Receipt QR Code generated!')}
+              className="flex items-center justify-center space-x-3 h-20 bg-indigo-600 text-white text-2xl font-bold rounded-2xl hover:bg-indigo-700 transition shadow-lg"
+            >
+              <QrCode size={28} />
+              <span>E-Receipt</span>
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => alert('Printing receipt...')}
+              className="flex items-center justify-center space-x-3 h-20 bg-slate-800 text-white text-2xl font-bold rounded-2xl hover:bg-slate-900 transition shadow-lg"
+            >
+              <Printer size={28} />
+              <span>พิมพ์ใบเสร็จ</span>
+            </motion.button>
+          </div>
         </div>
 
         {/* Right Column: Result Info */}
@@ -47,7 +68,7 @@ const ResultCard = ({ isPass, value, image, countdown, onReset, isDevMode }) => 
                 <XCircle size={80} className="text-destructive" />
               </div>
             )}
-            
+
             <h2 className={`text-6xl font-black ${isPass ? 'text-success' : 'text-destructive'}`}>
               {isPass ? 'ผ่าน' : 'ไม่ผ่าน'}
             </h2>
@@ -60,9 +81,8 @@ const ResultCard = ({ isPass, value, image, countdown, onReset, isDevMode }) => 
             </div>
           </div>
 
-          <div className={`p-4 w-full rounded-2xl text-center text-xl font-bold ${
-            isPass ? 'bg-success/5 text-success' : 'bg-destructive/5 text-destructive'
-          }`}>
+          <div className={`p-4 w-full rounded-2xl text-center text-xl font-bold ${isPass ? 'bg-success/5 text-success' : 'bg-destructive/5 text-destructive'
+            }`}>
             {isPass ? 'สามารถปฏิบัติงานได้' : 'กรุณาติดต่อหัวหน้างาน'}
           </div>
 
@@ -75,7 +95,7 @@ const ResultCard = ({ isPass, value, image, countdown, onReset, isDevMode }) => 
               <ArrowLeft className="mr-3" />
               กลับหน้าหลัก
             </motion.button>
-            
+
             {!isDevMode && (
               <p className="text-slate-400 text-lg font-medium">
                 จะกลับหน้าหลักในอีก <span className="text-primary font-bold">{countdown}</span> วินาที
