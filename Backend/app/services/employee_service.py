@@ -157,12 +157,14 @@ class EmployeeService:
             )
 
             # Replace fingerprints for this employee
+            # Unconditionally delete first to ensure any deleted fingerprints on the cloud are wiped locally
+            await conn.execute(
+                "DELETE FROM fingerprints WHERE employee_id = ?",
+                (employee_data["id"],),
+            )
+
             fingerprints = employee_data.get("fingerprints", [])
             if fingerprints:
-                await conn.execute(
-                    "DELETE FROM fingerprints WHERE employee_id = ?",
-                    (employee_data["id"],),
-                )
                 await conn.executemany(
                     """
                     INSERT INTO fingerprints

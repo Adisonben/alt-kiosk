@@ -154,6 +154,32 @@ class SyncService:
         employees = self._extract_list(response)
 
         count = await self._employee_svc.upsert_many(employees)
+
+        # Sweep deleted employees that are no longer present in the cloud payload list
+        if employees:
+            active_ids = [emp["id"] for emp in employees]
+            async with self._db.connection() as conn:
+                placeholders = ",".join("?" for _ in active_ids)
+                cursor = await conn.execute(
+                    f"DELETE FROM employees WHERE org_id = ? AND id NOT IN ({placeholders})",
+                    (settings.CLOUD_ORG_ID, *active_ids),
+                )
+                deleted_count = cursor.rowcount
+                await conn.commit()
+                if deleted_count > 0:
+                    logger.info("SyncService: swept %d deleted employees and their fingerprints locally", deleted_count)
+        else:
+            # If the cloud returned 0 active employees, delete all local employees for this org
+            async with self._db.connection() as conn:
+                cursor = await conn.execute(
+                    "DELETE FROM employees WHERE org_id = ?",
+                    (settings.CLOUD_ORG_ID,),
+                )
+                deleted_count = cursor.rowcount
+                await conn.commit()
+                if deleted_count > 0:
+                    logger.info("SyncService: swept all %d local employees because cloud has 0 records", deleted_count)
+
         now = _now_iso()
 
         await self._set_sync_metadata(_KEY_LAST_FULL_SYNC, now)
