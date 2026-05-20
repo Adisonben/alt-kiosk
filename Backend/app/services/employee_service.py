@@ -200,6 +200,54 @@ class EmployeeService:
             await conn.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
             await conn.commit()
 
+    async def save_fingerprint(
+        self, employee_id: str, fingerprint_code: str, finger_index: int = 0
+    ) -> str:
+        """
+        Save fingerprint locally in the database.
+        Returns the generated fingerprint UUID.
+        """
+        import uuid
+        now = _now_iso()
+        fp_id = str(uuid.uuid4())
+
+        async with self._db.connection() as conn:
+            # Update the employee's updated_at timestamp
+            await conn.execute(
+                "UPDATE employees SET updated_at = ? WHERE id = ?",
+                (now, employee_id),
+            )
+
+            # Remove any existing fingerprints for this employee to prevent duplicates
+            await conn.execute(
+                "DELETE FROM fingerprints WHERE employee_id = ?",
+                (employee_id,),
+            )
+
+            # Insert the new fingerprint template
+            await conn.execute(
+                """
+                INSERT INTO fingerprints (id, employee_id, finger_index, fingerprint_code, updated_at, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fp_id,
+                    employee_id,
+                    finger_index,
+                    fingerprint_code,
+                    now,
+                    now,
+                ),
+            )
+            await conn.commit()
+
+        logger.info(
+            "EmployeeService: registered fingerprint locally (id: %s) for employee %s",
+            fp_id,
+            employee_id,
+        )
+        return fp_id
+
     # ── Private helpers ──────────────────────────────────────────
 
     @staticmethod

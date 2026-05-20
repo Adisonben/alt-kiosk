@@ -1,8 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Play } from 'lucide-react';
+import { Play, Fingerprint } from 'lucide-react';
 
-const Home = ({ onStart }) => {
+const Home = ({ onStart, onRegister }) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -24,7 +24,7 @@ const Home = ({ onStart }) => {
         </p>
       </div>
 
-      <div className="pt-8 w-full max-w-md">
+      <div className="pt-8 w-full max-w-md space-y-4">
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
@@ -34,8 +34,18 @@ const Home = ({ onStart }) => {
           <Play className="mr-4 fill-current" size={32} />
           เริ่มใช้งาน
         </motion.button>
+
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={onRegister}
+          className="kiosk-button w-full h-24 bg-slate-100 text-slate-700 text-3xl border-2 border-slate-200 shadow-md hover:bg-slate-200"
+        >
+          <Fingerprint className="mr-4 text-primary" size={32} />
+          ลงทะเบียนลายนิ้วมือ
+        </motion.button>
         
-        <p className="mt-6 text-slate-400 text-xl">
+        <p className="pt-4 text-slate-400 text-xl">
           กรุณาเตรียมรหัสพนักงาน
         </p>
       </div>

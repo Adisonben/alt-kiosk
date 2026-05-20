@@ -155,6 +155,57 @@ class FingerprintService:
 
         return match_employee_id
 
+    async def capture_fingerprint(
+        self, session_id: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Runs the fingerprint scan workflow to capture a template for registration.
+        Returns the captured Base64 fingerprint template if successful, or None.
+        """
+        def push(event: dict):
+            if session_id:
+                event["session_id"] = session_id
+            asyncio.create_task(self._event_bus.publish(event))
+
+        # 1. State: Scanning
+        push({"type": "fingerprint_state", "state": "scanning", "message": _STATUS_MSG["scanning"]})
+
+        # 2. Capture Fingerprint
+        scan_result = await self._loop.run_in_executor(None, self._run_scan)
+        if not scan_result["success"]:
+            logger.warning("Fingerprint registration scan failed: %s", scan_result.get("reason"))
+            push({
+                "type": "fingerprint_result",
+                "success": False,
+                "match": False,
+                "message": f"Scan failed: {scan_result.get('reason')}"
+            })
+            return None
+
+        # 3. State: Processing
+        push({"type": "fingerprint_state", "state": "processing", "message": _STATUS_MSG["processing"]})
+
+        scanned_base64 = scan_result["data"]
+        scanned_raw = base64_to_raw(scanned_base64)
+        if len(scanned_raw) != TEMPLATE_SIZE:
+            push({
+                "type": "fingerprint_result",
+                "success": False,
+                "match": False,
+                "message": "Invalid scanned template size"
+            })
+            return None
+
+        # 4. Notify scanning success
+        push({
+            "type": "fingerprint_result",
+            "success": True,
+            "match": False,
+            "message": "Capture successful"
+        })
+
+        return scanned_base64
+
     async def _listen_commands(self) -> None:
         """Async loop: wait for commands from the CommandBus."""
         try:

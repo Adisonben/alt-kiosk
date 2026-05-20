@@ -28,6 +28,7 @@ _COMMAND_MAP = {
     "VERIFY_FINGERPRINT": "VERIFY_FINGERPRINT",  # legacy path (Phase 4 will remove)
     "FORCE_SYNC": "FORCE_SYNC",
     "IDENTIFY": "IDENTIFY",
+    "SCAN_FINGERPRINT": "SCAN_FINGERPRINT",
 }
 
 

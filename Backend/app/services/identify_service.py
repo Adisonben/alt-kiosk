@@ -64,7 +64,7 @@ class IdentifyService:
 
     async def start(self) -> None:
         self._cmd_queue = await self._command_bus.subscribe(
-            filter_types={"IDENTIFY"}
+            filter_types={"IDENTIFY", "SCAN_FINGERPRINT"}
         )
         self._cmd_listener_task = asyncio.create_task(
             self._listen_commands(), name="identify-cmd-listener"
@@ -87,15 +87,17 @@ class IdentifyService:
     # ── Command listener ──────────────────────────────────────────
 
     async def _listen_commands(self) -> None:
-        """Wait for IDENTIFY commands and spawn a workflow task per request."""
+        """Wait for IDENTIFY/SCAN_FINGERPRINT commands and spawn workflow tasks."""
         try:
             while True:
                 cmd = await self._cmd_queue.get()
-                if cmd.get("command") == "IDENTIFY":
-                    employee_id = cmd.get("params", {}).get("employee_id", "")
-                    session_id = cmd.get("session_id")
+                cmd_type = cmd.get("command")
+                session_id = cmd.get("session_id")
 
-                    # Debounce duplicate concurrent IDENTIFY commands
+                if cmd_type == "IDENTIFY":
+                    employee_id = cmd.get("params", {}).get("employee_id", "")
+
+                    # Debounce duplicate concurrent commands
                     if self._workflow_lock.locked():
                         logger.warning(
                             "IdentifyService: workflow is already running. Ignoring concurrent IDENTIFY command"
@@ -114,6 +116,22 @@ class IdentifyService:
                             self._identify_all_workflow(session_id),
                             name="identify-all",
                         )
+                elif cmd_type == "SCAN_FINGERPRINT":
+                    employee_id = cmd.get("params", {}).get("employee_id", "")
+
+                    if self._workflow_lock.locked():
+                        logger.warning(
+                            "IdentifyService: workflow is already running. Ignoring concurrent SCAN_FINGERPRINT command"
+                        )
+                        continue
+
+                    if employee_id:
+                        asyncio.create_task(
+                            self._enroll_workflow(employee_id, session_id),
+                            name=f"enroll-{employee_id}",
+                        )
+                    else:
+                        logger.warning("IdentifyService: SCAN_FINGERPRINT received without employee_id")
         except asyncio.CancelledError:
             pass
 
@@ -307,3 +325,99 @@ class IdentifyService:
                 ),
                 name=f"log-fp-{employee.id}",
             )
+
+    # ── Enrollment workflow ───────────────────────────────────────
+
+    async def _enroll_workflow(
+        self, employee_id: str, session_id: Optional[str]
+    ) -> None:
+        """
+        Enrollment workflow: captures fingerprint, saves it locally, and uploads to cloud.
+        """
+        async with self._workflow_lock:
+            def push(event: dict) -> None:
+                if session_id:
+                    event["session_id"] = session_id
+                asyncio.create_task(self._event_bus.publish(event))
+
+            logger.info("IdentifyService: starting fingerprint enrollment for employee_id='%s'", employee_id)
+
+            # 1. Fetch employee from local SQLite using primary key (id)
+            employee = await self._employee_svc.get_by_id(employee_id)
+            if not employee:
+                logger.warning("IdentifyService: employee '%s' not found for enrollment", employee_id)
+                push({
+                    "type": "enroll_result",
+                    "success": False,
+                    "message": "ไม่พบข้อมูลพนักงานในระบบ",
+                })
+                return
+
+            # 2. Call capture_fingerprint from FingerprintService
+            try:
+                fingerprint_code = await self._fingerprint_svc.capture_fingerprint(session_id)
+            except Exception as exc:
+                logger.exception("IdentifyService: error capturing fingerprint — %s", exc)
+                push({
+                    "type": "enroll_result",
+                    "success": False,
+                    "message": "เกิดข้อผิดพลาดกับอุปกรณ์สแกนลายนิ้วมือ",
+                })
+                return
+
+            if not fingerprint_code:
+                logger.warning("IdentifyService: fingerprint capture failed (None returned)")
+                push({
+                    "type": "enroll_result",
+                    "success": False,
+                    "message": "การสแกนลายนิ้วมือล้มเหลว หรือหมดเวลาสแกน",
+                })
+                return
+
+            # 3. Save template locally in SQLite
+            try:
+                await self._employee_svc.save_fingerprint(
+                    employee_id=employee.id,
+                    fingerprint_code=fingerprint_code,
+                    finger_index=0
+                )
+            except Exception as exc:
+                logger.exception("IdentifyService: failed to save fingerprint locally — %s", exc)
+                push({
+                    "type": "enroll_result",
+                    "success": False,
+                    "message": "เกิดข้อผิดพลาดในการบันทึกข้อมูลลายนิ้วมือบนเครื่อง Kiosk",
+                })
+                return
+
+            # 4. POST the template to the cloud via CloudHttpClient
+            try:
+                payload = {
+                    "employee_id": employee.id,
+                    "finger_index": 0,
+                    "fingerprint_code": fingerprint_code,
+                }
+                
+                # Cloud REST API endpoint as per approved spec
+                await self._http.post("/device/employee/fingerprint", json=payload)
+                
+                logger.info(
+                    "IdentifyService: successfully uploaded fingerprint for %s to cloud",
+                    employee.full_name,
+                )
+            except Exception as exc:
+                logger.exception("IdentifyService: failed to upload fingerprint to cloud — %s", exc)
+                push({
+                    "type": "enroll_result",
+                    "success": False,
+                    "message": f"ไม่สามารถส่งข้อมูลลายนิ้วมือไปยังระบบคลาวด์ได้ ({str(exc)})",
+                })
+                return
+
+            # 5. Broadcast success
+            push({
+                "type": "enroll_result",
+                "success": True,
+                "message": "ลงทะเบียนลายนิ้วมือสำเร็จ",
+            })
+            logger.info("IdentifyService: successfully completed enrollment workflow for %s", employee.full_name)

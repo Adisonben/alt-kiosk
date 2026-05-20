@@ -4,13 +4,14 @@ import Home from './pages/Home';
 import ScanFingerprint from './pages/ScanFingerprint';
 import AlcoholTest from './pages/AlcoholTest';
 import Result from './pages/Result';
+import RegisterFingerprint from './pages/RegisterFingerprint';
 import DevOverlay from './components/kiosk/DevOverlay';
 import { WebSocketProvider } from './context/WebSocketContext';
 
 const isDevMode = import.meta.env.VITE_APP_MODE === 'dev';
 
 function App() {
-  const [currentStep, setCurrentStep] = useState('home'); // home, fingerprint_scan, testing, result
+  const [currentStep, setCurrentStep] = useState('home'); // home, fingerprint_scan, testing, result, register_input_id, register_fingerprint
   const [employee, setEmployee] = useState(null);
   const [testResult, setTestResult] = useState({ value: 0, image: null });
   const [devControls, setDevControls] = useState(null);
@@ -54,7 +55,12 @@ function App() {
         )}
 
         {currentStep === 'home' && (
-          <Home onStart={handleStart} isDevMode={isDevMode} setDevControls={setDevControls} />
+          <Home 
+            onStart={handleStart} 
+            onRegister={() => setCurrentStep('register_input_id')}
+            isDevMode={isDevMode} 
+            setDevControls={setDevControls} 
+          />
         )}
         
         {currentStep === 'fingerprint_scan' && (
@@ -67,6 +73,16 @@ function App() {
         
         {currentStep === 'result' && (
           <Result value={testResult.value} image={testResult.image} onReset={handleReset} isDevMode={isDevMode} setDevControls={setDevControls} />
+        )}
+
+        {(currentStep === 'register_input_id' || currentStep === 'register_fingerprint') && (
+          <RegisterFingerprint 
+            currentStep={currentStep}
+            setCurrentStep={setCurrentStep}
+            onCancel={handleReset}
+            isDevMode={isDevMode}
+            setDevControls={setDevControls}
+          />
         )}
       </FullscreenLayout>
     </WebSocketProvider>

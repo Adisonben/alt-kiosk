@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Wind, RefreshCcw, CheckCircle2, Circle, User } from 'lucide-react';
 import StatusCircle from '../components/kiosk/StatusCircle';
-import ProgressIndicator from '../components/kiosk/ProgressIndicator';
 import { useWebSocket } from '../context/WebSocketContext';
 
 const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
   const [status, setStatus] = useState('preparing'); // preparing, ready, detected, error, sampling, analyzing
   const [progress, setProgress] = useState(0); // Progress is just for animation now
-  
+
   const { sendCommand, subscribe } = useWebSocket();
 
   const instructions = [
@@ -58,7 +57,7 @@ const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
           setStatus('error');
         }
       });
-      
+
       return () => {
         unsubState();
         unsubResult();
@@ -121,7 +120,7 @@ const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
 
   const getStatusDisplay = () => {
     switch (status) {
-      case 'preparing': return { text: 'กำลังเตรียมอุปกรณ์...', color: 'text-amber-500' };
+      case 'preparing': return { text: 'กำลังเตรียมอุปกรณ์', color: 'text-amber-500' };
       case 'ready': return { text: 'อุปกรณ์พร้อมแล้ว', color: 'text-success' };
       case 'detected': return { text: 'กำลังตรวจวัด...', color: 'text-primary' };
       case 'error': return { text: 'เกิดข้อผิดพลาด', color: 'text-destructive' };
@@ -143,98 +142,93 @@ const AlcoholTest = ({ employee, onComplete, isDevMode, setDevControls }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center"
+      className="w-full max-w-6xl space-y-12"
     >
-      {/* Left Column: Instructions & Employee Profile */}
-      <div className="space-y-8">
-        {/* Identified Employee Info Card */}
-        <div className="w-full bg-white rounded-[2.5rem] p-6 flex items-center space-x-6 shadow-sm border border-slate-100 animate-fadeIn">
-          <div className="w-20 h-20 bg-primary/5 rounded-2xl flex items-center justify-center text-primary border border-primary/10">
-            <User size={48} />
-          </div>
-          <div className="flex-1 space-y-1">
-            <span className="text-sm font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">ผู้ตรวจวัด / Tester</span>
-            <h3 className="text-3xl font-black text-slate-800">{employee?.name}</h3>
-            <p className="text-lg text-slate-400 font-mono font-bold">รหัสพนักงาน: {employee?.emp_id}</p>
-          </div>
+      {/* Identified Employee Info Card (Full Page Width) */}
+      <div className="w-full bg-white rounded-[2.5rem] p-8 flex items-center space-x-8 shadow-sm border border-slate-100 animate-fadeIn">
+        <div className="w-24 h-24 bg-primary/5 rounded-3xl flex items-center justify-center text-primary border border-primary/10">
+          <User size={56} />
         </div>
-
-        <div className="space-y-2">
-          <h2 className="text-4xl font-black text-slate-800">คำแนะนำการใช้งาน</h2>
-          <p className="text-xl text-slate-500 font-medium">กรุณาปฏิบัติตามขั้นตอนด้านล่าง</p>
-        </div>
-
-        <div className="space-y-6">
-          {instructions.map((step, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.2 }}
-              className="flex items-start space-x-6 p-6 bg-white rounded-3xl shadow-sm border border-slate-100"
-            >
-              <div className="flex-shrink-0 w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center text-2xl font-black">
-                {index + 1}
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-2xl font-bold text-slate-800">{step.title}</h3>
-                <p className="text-lg text-slate-500 leading-relaxed font-medium">{step.description}</p>
-              </div>
-            </motion.div>
-          ))}
+        <div className="flex-1 space-y-2">
+          <span className="text-sm font-bold text-primary bg-primary/10 px-3 py-1 rounded-full inline-block">ผู้ตรวจวัด / Tester</span>
+          <h3 className="text-4xl font-black text-slate-800">{employee?.name}</h3>
+          <p className="text-xl text-slate-400 font-mono font-bold">รหัสพนักงาน: {employee?.emp_id}</p>
         </div>
       </div>
 
-      {/* Right Column: Blow Status */}
-      <div className="kiosk-card p-12 flex flex-col items-center space-y-10 bg-slate-50/50 border-2 border-white">
-        <div className="text-center space-y-2">
-          <h2 className={`text-4xl font-black ${statusDisplay.color}`}>
-            {statusDisplay.text}
-          </h2>
-          <p className="text-xl text-slate-400 font-medium uppercase tracking-widest">
-            Blow Status
-          </p>
+      {/* Main Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+        {/* Left Column: Instructions */}
+        <div className="space-y-8">
+          <div className="space-y-2">
+            <h2 className="text-4xl font-black text-slate-800">คำแนะนำการใช้งาน</h2>
+            <p className="text-xl text-slate-500 font-medium">กรุณาปฏิบัติตามขั้นตอนด้านล่าง</p>
+          </div>
+
+          <div className="space-y-6">
+            {instructions.map((step, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.2 }}
+                className="flex items-start space-x-6 p-6 bg-white rounded-3xl shadow-sm border border-slate-100"
+              >
+                <div className="flex-shrink-0 w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center text-2xl font-black">
+                  {index + 1}
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-2xl font-bold text-slate-800">{step.title}</h3>
+                  <p className="text-lg text-slate-500 leading-relaxed font-medium">{step.description}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         </div>
 
-        <StatusCircle 
-          status={status === 'detected' ? 'detecting' : status === 'ready' ? 'waiting' : status} 
-          progress={progress} 
-          icon={Wind} 
-        />
-
-        <div className="w-full space-y-8">
-          <div className="space-y-3">
-            <div className="flex justify-between items-end">
-              <span className="text-lg font-bold text-slate-500">ความคืบหน้า</span>
-              <span className="text-2xl font-black text-primary">{progress}%</span>
-            </div>
-            <ProgressIndicator progress={progress} />
+        {/* Right Column: Blow Status */}
+        <div className="kiosk-card p- flex flex-col items-center space-y-10 bg-slate-50/50 border-2 border-white">
+          <div className="text-center space-y-2">
+            <h2 className={`text-4xl font-black ${statusDisplay.color}`}>
+              {statusDisplay.text}
+            </h2>
+            <p className="text-xl text-slate-400 font-medium uppercase tracking-widest">
+              Blow Status
+            </p>
           </div>
-          
-          <div className="flex justify-center h-24">
-            {status === 'ready' && (
-              <div className="flex items-center text-slate-400 text-2xl font-bold italic animate-pulse">
-                กรุณาเป่าลมอย่างต่อเนื่อง...
-              </div>
-            )}
-            
-            {status === 'error' && (
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleRetry}
-                className="kiosk-button w-full bg-destructive text-white text-3xl shadow-lg shadow-destructive/20"
-              >
-                <RefreshCcw className="mr-3" />
-                ลองใหม่
-              </motion.button>
-            )}
 
-            {status === 'preparing' && (
-              <div className="flex items-center text-slate-400 text-2xl font-bold italic animate-pulse">
-                โปรดรอสักครู่...
-              </div>
-            )}
+          <StatusCircle
+            status={status === 'detected' ? 'detecting' : status === 'ready' ? 'waiting' : status}
+            progress={progress}
+            icon={Wind}
+          />
+
+          <div className="w-full space-y-8">
+            <div className="flex justify-center h-24">
+              {status === 'ready' && (
+                <div className="flex items-center text-slate-400 text-2xl font-bold italic animate-pulse">
+                  กรุณาเป่าลมอย่างต่อเนื่อง...
+                </div>
+              )}
+
+              {status === 'error' && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleRetry}
+                  className="kiosk-button w-full bg-destructive text-white text-3xl shadow-lg shadow-destructive/20"
+                >
+                  <RefreshCcw className="mr-3" />
+                  ลองใหม่
+                </motion.button>
+              )}
+
+              {status === 'preparing' && (
+                <div className="flex items-center text-slate-400 text-2xl font-bold italic animate-pulse">
+                  โปรดรอสักครู่...
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
