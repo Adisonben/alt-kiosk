@@ -147,7 +147,8 @@ class CloudHttpClient:
             method, path, req_params, req_body
         )
 
-        for attempt, delay in enumerate([0] + _RETRY_DELAYS):
+        delays = [0] if method == "POST" else ([0] + _RETRY_DELAYS)
+        for attempt, delay in enumerate(delays):
             if delay > 0:
                 logger.warning(
                     "CloudHttpClient: retrying %s %s in %ds (attempt %d)",
@@ -171,6 +172,8 @@ class CloudHttpClient:
                 )
 
                 response.raise_for_status()
+                if response.status_code == 204 or not response.text.strip():
+                    return {}
                 return response.json()
 
             except httpx.HTTPStatusError as exc:

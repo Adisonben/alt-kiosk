@@ -47,3 +47,4 @@ class ScanLog:
     scanned_at: str         # ISO8601
     uploaded: bool          # False = pending upload
     upload_error: Optional[str]  # Last error message if upload failed
+    retry_count: int = 0    # Number of upload attempts

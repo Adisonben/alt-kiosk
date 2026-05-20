@@ -58,6 +58,7 @@ class IdentifyService:
 
         self._cmd_queue: Optional[asyncio.Queue] = None
         self._cmd_listener_task: Optional[asyncio.Task] = None
+        self._workflow_lock = asyncio.Lock()
 
     # ── Lifecycle ─────────────────────────────────────────────────
 
@@ -98,6 +99,14 @@ class IdentifyService:
                         logger.warning("IdentifyService: IDENTIFY command missing employee_id")
                         continue
 
+                    # Debounce duplicate concurrent IDENTIFY commands
+                    if self._workflow_lock.locked():
+                        logger.warning(
+                            "IdentifyService: workflow is already running. Ignoring concurrent IDENTIFY command for employee_id '%s'",
+                            employee_id
+                        )
+                        continue
+
                     # Run each identification in its own task so the listener
                     # stays free to accept new commands immediately.
                     asyncio.create_task(
@@ -116,108 +125,109 @@ class IdentifyService:
         Full identification flow for a single request.
         All events include session_id if provided.
         """
-        def push(event: dict) -> None:
-            if session_id:
-                event["session_id"] = session_id
-            asyncio.create_task(self._event_bus.publish(event))
+        async with self._workflow_lock:
+            def push(event: dict) -> None:
+                if session_id:
+                    event["session_id"] = session_id
+                asyncio.create_task(self._event_bus.publish(event))
 
-        logger.info("IdentifyService: identifying emp_id='%s'", employee_id)
+            logger.info("IdentifyService: identifying emp_id='%s'", employee_id)
 
-        # Prepend Org Code and 'E' to the employee_id for lookup
-        # Example: IDD + E + 00001 = IDDE00001
-        formatted_id = f"{settings.CLOUD_ORG_CODE}E{employee_id}"
-        logger.debug("IdentifyService: formatted lookup ID: '%s'", formatted_id)
+            # Prepend Org Code and 'E' to the employee_id for lookup
+            # Example: IDD + E + 00001 = IDDE00001
+            formatted_id = f"{settings.CLOUD_ORG_CODE}E{employee_id}"
+            logger.debug("IdentifyService: formatted lookup ID: '%s'", formatted_id)
 
-        # ── Step 1: Lookup employee in local DB ───────────────────
-        employee = await self._employee_svc.get_by_emp_id(formatted_id)
+            # ── Step 1: Lookup employee in local DB ───────────────────
+            employee = await self._employee_svc.get_by_emp_id(formatted_id)
 
-        if not employee:
-            logger.warning("IdentifyService: emp_id '%s' not found in local DB", employee_id)
+            if not employee:
+                logger.warning("IdentifyService: emp_id '%s' not found in local DB", employee_id)
+                push({
+                    "type": "identify_result",
+                    "success": False,
+                    "message": "ไม่พบข้อมูลพนักงาน",
+                })
+                return
+
+            # ── Step 2: Publish employee found ────────────────────────
             push({
                 "type": "identify_result",
-                "success": False,
-                "message": "ไม่พบข้อมูลพนักงาน",
+                "success": True,
+                "employee": {
+                    "id": employee.id,
+                    "name": employee.full_name,
+                    "emp_id": employee.emp_id,
+                },
+                "has_fingerprints": len(employee.fingerprints) > 0,
             })
-            return
 
-        # ── Step 2: Publish employee found ────────────────────────
-        push({
-            "type": "identify_result",
-            "success": True,
-            "employee": {
-                "id": employee.id,
-                "name": employee.full_name,
-                "emp_id": employee.emp_id,
-            },
-            "has_fingerprints": len(employee.fingerprints) > 0,
-        })
+            # (Merged logging: we now only log once at the end of the workflow)
 
-        # (Merged logging: we now only log once at the end of the workflow)
+            # ── Step 3: Guard — no fingerprints enrolled ──────────────
+            if not employee.fingerprints:
+                logger.warning(
+                    "IdentifyService: emp_id '%s' has no fingerprint templates", employee_id
+                )
+                push({
+                    "type": "verify_result",
+                    "success": False,
+                    "match": False,
+                    "message": "ไม่มีข้อมูลลายนิ้วมือในระบบ",
+                })
+                
+                # Log single result: no templates
+                asyncio.create_task(
+                    self._scan_log_svc.log_fingerprint(employee.id, "no_templates"),
+                    name=f"log-fp-{employee.id}",
+                )
+                return
 
-        # ── Step 3: Guard — no fingerprints enrolled ──────────────
-        if not employee.fingerprints:
-            logger.warning(
-                "IdentifyService: emp_id '%s' has no fingerprint templates", employee_id
-            )
+            # ── Step 4: Run fingerprint scan + compare ────────────────
+            templates = [fp.fingerprint_code for fp in employee.fingerprints]
+
+            try:
+                match = await self._fingerprint_svc.scan_and_verify(templates, session_id)
+            except Exception as exc:
+                logger.exception("IdentifyService: fingerprint scan error — %s", exc)
+                push({
+                    "type": "verify_result",
+                    "success": False,
+                    "match": False,
+                    "message": "เกิดข้อผิดพลาดกับอุปกรณ์สแกนลายนิ้วมือ",
+                })
+
+                # Log single result: device error
+                asyncio.create_task(
+                    self._scan_log_svc.log_fingerprint(employee.id, "scan_error"),
+                    name=f"log-fp-{employee.id}",
+                )
+                return
+
+            if match:
+                self._alcohol_svc.set_active_employee_id(employee.id)
+
+            # ── Step 5: Publish verification result ───────────────────
             push({
                 "type": "verify_result",
-                "success": False,
-                "match": False,
-                "message": "ไม่มีข้อมูลลายนิ้วมือในระบบ",
-            })
-            
-            # Log single result: no templates
-            asyncio.create_task(
-                self._scan_log_svc.log_fingerprint(employee.id, "no_templates"),
-                name=f"log-fp-{employee.id}",
-            )
-            return
-
-        # ── Step 4: Run fingerprint scan + compare ────────────────
-        templates = [fp.fingerprint_code for fp in employee.fingerprints]
-
-        try:
-            match = await self._fingerprint_svc.scan_and_verify(templates, session_id)
-        except Exception as exc:
-            logger.exception("IdentifyService: fingerprint scan error — %s", exc)
-            push({
-                "type": "verify_result",
-                "success": False,
-                "match": False,
-                "message": "เกิดข้อผิดพลาดกับอุปกรณ์สแกนลายนิ้วมือ",
+                "success": True,
+                "match": match,
+                "employee": {
+                    "id": employee.id,
+                    "name": employee.full_name,
+                    "emp_id": employee.emp_id,
+                },
             })
 
-            # Log single result: device error
+            logger.info(
+                "IdentifyService: emp_id='%s' — %s",
+                employee_id, "MATCH" if match else "NO MATCH",
+            )
+
+            # ── Step 6: Log result locally (LogUploader will sync to cloud) ───
             asyncio.create_task(
-                self._scan_log_svc.log_fingerprint(employee.id, "scan_error"),
+                self._scan_log_svc.log_fingerprint(
+                    employee.id, "match" if match else "no_match"
+                ),
                 name=f"log-fp-{employee.id}",
             )
-            return
-
-        if match:
-            self._alcohol_svc.set_active_employee_id(employee.id)
-
-        # ── Step 5: Publish verification result ───────────────────
-        push({
-            "type": "verify_result",
-            "success": True,
-            "match": match,
-            "employee": {
-                "id": employee.id,
-                "name": employee.full_name,
-                "emp_id": employee.emp_id,
-            },
-        })
-
-        logger.info(
-            "IdentifyService: emp_id='%s' — %s",
-            employee_id, "MATCH" if match else "NO MATCH",
-        )
-
-        # ── Step 6: Log result locally (LogUploader will sync to cloud) ───
-        asyncio.create_task(
-            self._scan_log_svc.log_fingerprint(
-                employee.id, "match" if match else "no_match"
-            ),
-            name=f"log-fp-{employee.id}",
-        )

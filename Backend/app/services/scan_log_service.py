@@ -67,12 +67,12 @@ class ScanLogService:
     # ── Read (used by LogUploaderService in Phase 5) ──────────────
 
     async def get_pending(self, limit: int = 50) -> list[ScanLog]:
-        """Return scan logs that have not yet been uploaded to the cloud."""
+        """Return scan logs that have not yet been uploaded to the cloud and haven't exceeded retry limit."""
         async with self._db.connection() as conn:
             cursor = await conn.execute(
                 "SELECT id, employee_id, scan_type, result, value, scanned_at, "
-                "uploaded, upload_error "
-                "FROM scan_logs WHERE uploaded = 0 ORDER BY id ASC LIMIT ?",
+                "uploaded, upload_error, retry_count "
+                "FROM scan_logs WHERE uploaded = 0 AND retry_count < 5 ORDER BY id ASC LIMIT ?",
                 (limit,),
             )
             rows = await cursor.fetchall()
@@ -86,6 +86,7 @@ class ScanLogService:
                     scanned_at=row["scanned_at"],
                     uploaded=bool(row["uploaded"]),
                     upload_error=row["upload_error"],
+                    retry_count=row["retry_count"],
                 )
                 for row in rows
             ]
@@ -100,10 +101,10 @@ class ScanLogService:
             await conn.commit()
 
     async def mark_failed(self, log_id: int, error: str) -> None:
-        """Record the upload error for a scan log entry."""
+        """Record the upload error and increment the retry count for a scan log entry."""
         async with self._db.connection() as conn:
             await conn.execute(
-                "UPDATE scan_logs SET upload_error = ? WHERE id = ?",
+                "UPDATE scan_logs SET upload_error = ?, retry_count = retry_count + 1 WHERE id = ?",
                 (error, log_id),
             )
             await conn.commit()

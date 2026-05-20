@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS scan_logs (
     value        REAL,
     scanned_at   TEXT NOT NULL,
     uploaded     INTEGER NOT NULL DEFAULT 0,
-    upload_error TEXT
+    upload_error TEXT,
+    retry_count  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_employees_emp_id ON employees(emp_id);
@@ -76,5 +77,13 @@ async def init_db() -> None:
     async with aiosqlite.connect(settings.DB_PATH) as db:
         await db.executescript(_DDL)
         await db.commit()
+
+        # Safely add retry_count column to scan_logs if upgrading an existing DB
+        try:
+            await db.execute("ALTER TABLE scan_logs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
+            await db.commit()
+        except aiosqlite.OperationalError:
+            # Column already exists, ignore
+            pass
 
     logger.info("DB: schema ready (version %s)", SCHEMA_VERSION)
