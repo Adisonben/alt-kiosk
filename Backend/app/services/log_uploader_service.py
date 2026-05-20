@@ -155,6 +155,7 @@ class LogUploaderService:
                 value=log.value,
                 scanned_at=log.scanned_at,
                 image_base64=log.image,
+                user_id=log.user_id,
             )
 
             if success:

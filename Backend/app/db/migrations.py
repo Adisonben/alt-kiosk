@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS scan_logs (
 CREATE TABLE IF NOT EXISTS anonymous_tests (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     org_id       TEXT NOT NULL,
+    user_id      TEXT,
     value        REAL,
     result       TEXT NOT NULL,
     scanned_at   TEXT NOT NULL,
@@ -94,6 +95,14 @@ async def init_db() -> None:
         # Safely add retry_count column to scan_logs if upgrading an existing DB
         try:
             await db.execute("ALTER TABLE scan_logs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
+            await db.commit()
+        except aiosqlite.OperationalError:
+            # Column already exists, ignore
+            pass
+
+        # Safely add user_id column to anonymous_tests if upgrading an existing DB
+        try:
+            await db.execute("ALTER TABLE anonymous_tests ADD COLUMN user_id TEXT")
             await db.commit()
         except aiosqlite.OperationalError:
             # Column already exists, ignore

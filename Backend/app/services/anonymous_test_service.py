@@ -21,6 +21,7 @@ def _now_iso() -> str:
 class AnonymousTest:
     id: Optional[int]
     org_id: str
+    user_id: Optional[str]
     value: Optional[float]
     result: str
     scanned_at: str
@@ -42,7 +43,7 @@ class AnonymousTestService:
     # ── Write ─────────────────────────────────────────────────────
 
     async def log_anonymous_test(
-        self, org_id: str, value: float, status: str, image: Optional[str] = None
+        self, org_id: str, value: float, status: str, image: Optional[str] = None, user_id: Optional[str] = None
     ) -> None:
         """
         Save an anonymous alcohol test result (fallback).
@@ -52,16 +53,16 @@ class AnonymousTestService:
         async with self._db.connection() as conn:
             await conn.execute(
                 """
-                INSERT INTO anonymous_tests (org_id, value, result, scanned_at, image)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO anonymous_tests (org_id, user_id, value, result, scanned_at, image)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (org_id, value, result, _now_iso(), image),
+                (org_id, user_id, value, result, _now_iso(), image),
             )
             await conn.commit()
 
         logger.info(
-            "AnonymousTestService: anonymous alcohol logged locally (fallback) — value=%.3f result=%s",
-            value, result,
+            "AnonymousTestService: anonymous alcohol logged locally (fallback) — value=%.3f result=%s user_id=%s",
+            value, result, user_id,
         )
 
     # ── Read (used by LogUploaderService) ─────────────────────────
@@ -70,7 +71,7 @@ class AnonymousTestService:
         """Return anonymous tests that have not yet been uploaded and haven't exceeded retry limit."""
         async with self._db.connection() as conn:
             cursor = await conn.execute(
-                "SELECT id, org_id, value, result, scanned_at, image, uploaded, upload_error, retry_count "
+                "SELECT id, org_id, user_id, value, result, scanned_at, image, uploaded, upload_error, retry_count "
                 "FROM anonymous_tests WHERE uploaded = 0 AND retry_count < 5 ORDER BY id ASC LIMIT ?",
                 (limit,),
             )
@@ -79,6 +80,7 @@ class AnonymousTestService:
                 AnonymousTest(
                     id=row["id"],
                     org_id=row["org_id"],
+                    user_id=row["user_id"],
                     value=row["value"],
                     result=row["result"],
                     scanned_at=row["scanned_at"],

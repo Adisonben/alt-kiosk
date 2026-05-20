@@ -298,7 +298,6 @@ class AlcoholService:
             with self._state_lock:
                 self._is_connected = True
 
-            # Reset + start
             ser.write(CMD_RESET)
             ser.flush()
             time.sleep(0.5)
@@ -356,7 +355,8 @@ class AlcoholService:
                                  scan_type="alcohol",
                                  result="pass" if status == "OK" else "fail",
                                  value=val,
-                                 image_base64=self._current_session_image
+                                 image_base64=self._current_session_image,
+                                 user_id=employee_id
                              )
                              if not success:
                                  from app.config import settings
@@ -364,7 +364,8 @@ class AlcoholService:
                                      org_id=settings.CLOUD_ORG_ID,
                                      value=val,
                                      status=status,
-                                     image=self._current_session_image
+                                     image=self._current_session_image,
+                                     user_id=employee_id
                                  )
                         asyncio.run_coroutine_threadsafe(upload_anonymous_or_log(), self._loop)
                     elif employee_id:

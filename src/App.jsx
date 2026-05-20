@@ -31,10 +31,12 @@ function App() {
   };
 
   const handleStartAnonymous = () => {
+    const random10Digit = Array.from({ length: 10 }, () => Math.floor(Math.random() * 10)).join('');
+
     setEmployee({
-      id: 'ANONYMOUS',
+      id: random10Digit,
       name: 'ตรวจทั่วไป (ไม่ระบุตัวตน)',
-      emp_id: 'ไม่ระบุตัวตน',
+      emp_id: `GUEST-${random10Digit}`,
       isAnonymous: true
     });
     setCurrentStep('testing');
